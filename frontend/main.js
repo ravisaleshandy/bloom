@@ -209,14 +209,14 @@ async function processIndexingBackground(recordingId, videoId, apiKey) {
  * Poll a capture session's status and sync to local DB if exported.
  * Used as fallback when WebSocket misses the exported event.
  */
-async function syncCaptureSession(sessionId, apiKey, retries = 5) {
-  for (let i = 0; i < retries; i++) {
+async function syncCaptureSession(sessionId, apiKey) {
+  const POLL_INTERVAL = 10_000;
+  while (true) {
     try {
       const session = await videodbService.getCaptureSession(apiKey, sessionId);
-      console.log(`[Sync] Session ${sessionId}: ${session.status}`);
 
-      // Session is complete once exportedVideoId is present (status may be 'stopped' or 'exported')
       if (session.exportedVideoId) {
+        console.log(`[Sync] Exported video received: ${session.exportedVideoId}`);
         const recording = findRecordingBySessionId(sessionId);
         if (recording) {
           updateRecording(recording.id, {
@@ -231,23 +231,18 @@ async function syncCaptureSession(sessionId, apiKey, retries = 5) {
       }
 
       if (session.status === 'failed') {
+        console.log(`[Sync] Session failed: ${sessionId}`);
         const recording = findRecordingBySessionId(sessionId);
         if (recording) updateRecording(recording.id, { insights_status: 'failed' });
         return;
       }
 
-      // Still in progress — wait and retry (5s, 10s, 15s, 30s)
-      if (i < retries - 1) {
-        const delay = [5000, 10000, 15000, 30000][i] || 30000;
-        console.log(`[Sync] Session still ${session.status}, retrying in ${delay / 1000}s...`);
-        await new Promise(r => setTimeout(r, delay));
-      }
+      await new Promise(r => setTimeout(r, POLL_INTERVAL));
     } catch (err) {
-      console.error(`[Sync] Error polling session ${sessionId}:`, err.message);
-      if (i < retries - 1) await new Promise(r => setTimeout(r, 5000));
+      console.error(`[Sync] Error:`, err.message);
+      await new Promise(r => setTimeout(r, POLL_INTERVAL));
     }
   }
-  console.warn(`[Sync] Gave up polling session ${sessionId}`);
 }
 
 /**
@@ -392,19 +387,14 @@ ipcMain.handle('recorder-start-recording', async (event, clientSessionId, config
         console.error('[WS] Listener error:', err.message);
       }
 
-      // Fallback: poll if WS dropped without terminal event, or if terminal
-      // event arrived but didn't carry video data (e.g. 'stopped' without URLs)
+      // Sync recording if video data is still missing
       try {
         const rec = findRecordingBySessionId(wsSessionId);
-        if (!receivedTerminalEvent) {
-          console.log('[WS] Disconnected without terminal event, falling back to polling...');
-          await syncCaptureSession(wsSessionId, wsApiKey);
-        } else if (rec && !rec.video_id) {
-          console.log('[WS] Terminal event received but no video data, polling session...');
+        if (!receivedTerminalEvent || (rec && !rec.video_id)) {
           await syncCaptureSession(wsSessionId, wsApiKey);
         }
       } catch (fallbackErr) {
-        console.error('[WS] Fallback polling error:', fallbackErr.message);
+        console.error('[Sync] Error:', fallbackErr.message);
       }
     })();
 
