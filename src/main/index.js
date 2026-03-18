@@ -307,14 +307,21 @@ function createModalWindow(page) {
 // ============================================================================
 
 /**
- * Create a macOS template tray icon (black on transparent, 36x36 @2x).
- * @param {boolean} filled - true for filled circle (recording), false for outline (idle)
+ * Create a tray icon (36x36 @2x). Circle-in-circle design.
+ * Idle: black template image (macOS adapts to menu bar).
+ * Recording: red (#FD5337), non-template so color is preserved.
  */
-function createTrayIcon(filled) {
+function createTrayIcon(recording) {
   const size = 36; // 18pt @2x retina
   const buf = Buffer.alloc(size * size * 4);
   const center = size / 2;
-  const radius = filled ? 7 : 8;
+  const outerRadius = 13.5;
+  const outerStroke = 1.5;
+  const innerRadius = 5.5;
+
+  const r = recording ? 0xFD : 0;
+  const g = recording ? 0x53 : 0;
+  const b = recording ? 0x37 : 0;
 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -324,25 +331,32 @@ function createTrayIcon(filled) {
       const idx = (y * size + x) * 4;
 
       let alpha = 0;
-      if (filled) {
-        if (dist <= radius) alpha = 255;
-        else if (dist <= radius + 1) alpha = Math.round(255 * (radius + 1 - dist));
-      } else {
-        const strokeHalf = 1;
-        const edge = Math.abs(dist - radius);
-        if (edge <= strokeHalf) alpha = 255;
-        else if (edge <= strokeHalf + 1) alpha = Math.round(255 * (strokeHalf + 1 - edge));
+
+      // Inner filled circle
+      if (dist <= innerRadius) {
+        alpha = 255;
+      } else if (dist <= innerRadius + 1) {
+        alpha = Math.round(255 * (innerRadius + 1 - dist));
       }
 
-      buf[idx] = 0;         // R
-      buf[idx + 1] = 0;     // G
-      buf[idx + 2] = 0;     // B
-      buf[idx + 3] = alpha;  // A
+      // Outer ring
+      const edge = Math.abs(dist - outerRadius);
+      if (edge <= outerStroke / 2) {
+        alpha = 255;
+      } else if (edge <= outerStroke / 2 + 1) {
+        alpha = Math.max(alpha, Math.round(255 * (outerStroke / 2 + 1 - edge)));
+      }
+
+      // macOS expects BGRA byte order
+      buf[idx] = b;
+      buf[idx + 1] = g;
+      buf[idx + 2] = r;
+      buf[idx + 3] = alpha;
     }
   }
 
   const img = nativeImage.createFromBuffer(buf, { width: size, height: size, scaleFactor: 2.0 });
-  img.setTemplateImage(true);
+  img.setTemplateImage(!recording);
   return img;
 }
 
