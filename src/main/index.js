@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, nativeImage, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, nativeImage, Notification, shell, systemPreferences } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { randomUUID } = require('crypto');
@@ -47,7 +47,7 @@ function createMainWindow() {
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
 
   const barWidth = 940;
-  const windowHeight = 80;  // compact: 52px bar + margin + shadow headroom
+  const windowHeight = 120;  // 52px bar + 6px bottom margin + ~62px shadow headroom
   const marginBottom = 8;
 
   mainWindow = new BrowserWindow({
@@ -62,6 +62,7 @@ function createMainWindow() {
     hasShadow: false,
     skipTaskbar: true,
     focusable: true,
+    show: false,
     backgroundColor: '#00000000',
     webPreferences: {
       preload: PRELOAD_SCRIPT,
@@ -72,6 +73,8 @@ function createMainWindow() {
 
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   mainWindow.setContentProtection(true);
+  // setVisibleOnAllWorkspaces can force-show on macOS — hide again
+  mainWindow.hide();
 
   // Restore dock icon — setVisibleOnAllWorkspaces can hide it on some macOS versions
   if (process.platform === 'darwin' && app.dock) {
@@ -290,7 +293,7 @@ function createModalWindow(page) {
   const theme = getAppConfig().theme || 'dark';
   const sizes = {
     permissions: { width: 560, height: 640 },
-    onboarding: { width: 480, height: 360 },
+    onboarding: { width: 480, height: 520 },
   };
   const size = sizes[page] || { width: 480, height: 400 };
 
@@ -374,53 +377,120 @@ function createTrayIcon(recording) {
 
 function createTray() {
   tray = new Tray(createTrayIcon(false));
-  tray.setToolTip('Async Recorder');
+  tray.setToolTip('Bloom');
   updateTrayMenu();
-
-  tray.on('click', () => {
-    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
-      mainWindow.show();
-    }
-  });
 }
 
 function updateTrayMenu() {
   if (!tray) return;
   tray.setImage(createTrayIcon(isRecording));
-  const menu = Menu.buildFromTemplate([
-    {
-      label: isRecording ? 'Stop Recording' : 'Start Recording',
-      click: () => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('recorder-event', { event: 'shortcut:toggle-recording', data: {} });
-        }
+
+  const isAuthenticated = !!getAppConfig().accessToken;
+
+  // Check permissions (passive — does not trigger system prompts)
+  let permissionsGranted = false;
+  if (isAuthenticated && process.platform === 'darwin') {
+    const micStatus = systemPreferences.getMediaAccessStatus('microphone');
+    const screenStatus = systemPreferences.getMediaAccessStatus('screen');
+    permissionsGranted = micStatus === 'granted' && screenStatus === 'granted';
+  } else if (isAuthenticated) {
+    permissionsGranted = true;
+  }
+
+  let template;
+
+  if (!isAuthenticated) {
+    // Not logged in — minimal menu
+    template = [
+      { label: 'Bloom', enabled: false },
+      { type: 'separator' },
+      {
+        label: 'Get API Key',
+        click: () => {
+          shell.openExternal('https://console.videodb.io/dashboard');
+        },
       },
-    },
-    { type: 'separator' },
-    {
-      label: 'Library',
-      click: () => createHistoryWindow(),
-    },
-    {
-      label: 'Logout',
-      click: () => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.executeJavaScript(`
-            window.configAPI.logout().then(() => {
-              window.recorderAPI.showOnboardingModal();
-            });
-          `);
-        }
+      { type: 'separator' },
+      { label: 'Quit', click: () => app.quit() },
+    ];
+  } else if (!permissionsGranted) {
+    // Logged in but permissions missing — no bar/recording controls
+    template = [
+      { label: 'Bloom', enabled: false },
+      { type: 'separator' },
+      { label: 'Library', click: () => createHistoryWindow() },
+      {
+        label: 'Logout',
+        click: async () => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.hide();
+            await mainWindow.webContents.executeJavaScript(`
+              (async () => {
+                const btn = document.getElementById('btn-start-session');
+                if (btn) btn.disabled = true;
+                await window.configAPI.logout();
+                window.recorderAPI.showOnboardingModal();
+              })()
+            `);
+          }
+          updateTrayMenu();
+        },
       },
-    },
-    { type: 'separator' },
-    {
-      label: 'Quit',
-      click: () => app.quit(),
-    },
-  ]);
-  tray.setContextMenu(menu);
-  tray.setToolTip(isRecording ? 'Async Recorder — Recording...' : 'Async Recorder');
+      { type: 'separator' },
+      { label: 'Quit', click: () => app.quit() },
+    ];
+  } else {
+    // Fully ready — full menu
+    const barVisible = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible();
+    template = [
+      { label: 'Bloom', enabled: false },
+      { type: 'separator' },
+      {
+        label: barVisible ? 'Hide Floating Bar' : 'Show Floating Bar',
+        click: () => {
+          if (!mainWindow || mainWindow.isDestroyed()) return;
+          if (mainWindow.isVisible()) {
+            mainWindow.hide();
+          } else {
+            mainWindow.show();
+          }
+          updateTrayMenu();
+        },
+      },
+      {
+        label: isRecording ? 'Stop Recording' : 'Start Recording',
+        click: () => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('recorder-event', { event: 'shortcut:toggle-recording', data: {} });
+          }
+        },
+      },
+      { type: 'separator' },
+      { label: 'Library', click: () => createHistoryWindow() },
+      {
+        label: 'Logout',
+        click: async () => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.hide();
+            await mainWindow.webContents.executeJavaScript(`
+              (async () => {
+                const btn = document.getElementById('btn-start-session');
+                if (btn) btn.disabled = true;
+                await window.configAPI.logout();
+                window.recorderAPI.showOnboardingModal();
+              })()
+            `);
+          }
+          updateTrayMenu();
+        },
+      },
+      { type: 'separator' },
+      { label: 'Quit', click: () => app.quit() },
+    ];
+  }
+
+  tray.setContextMenu(Menu.buildFromTemplate(template));
+  tray.setToolTip(isRecording ? 'Bloom — Recording...' : 'Bloom');
 }
 
 // ============================================================================
@@ -585,6 +655,8 @@ app.whenReady().then(async () => {
         data: result,
       });
     }
+    // Auth state may have changed — refresh tray menu
+    updateTrayMenu();
   });
 
   // Display picker
@@ -618,6 +690,14 @@ app.whenReady().then(async () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.hide();
     }
+    updateTrayMenu();
+  });
+
+  ipcMain.on('show-bar', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    }
+    updateTrayMenu();
   });
 
   ipcMain.on('recording-state-changed', (_event, recording) => {

@@ -2,15 +2,34 @@
 
 ## [2.0.0] - 2026-03-19
 
+### Rebrand
+- Renamed app from "Async Recorder" to "Bloom"
+- New app icon and brand assets
+
 ### Floating Bar
 - Replaced main window with a minimal floating bottom bar
 - Click-through transparent areas so the bar doesn't block apps behind it
+- Bar stays hidden until both permissions and auth are complete
+- Close/hide button on the floating bar
 - Display picker as a separate floating popup with multi-monitor support
 - Source toggles (mic, audio, camera, screen) work before and during recording
 - Inline loading state on start button during session initialization
 - Tooltips on all bar controls
-- Auto-show login on auth failure; logout in system tray
+
+### Permissions & Onboarding
 - Extracted permissions and onboarding into separate modal windows
+- Step-aware permission checking: screen permission deferred until mic is granted
+- Animated .webp previews showing how to grant each permission
+- Inward shadow vignette effect on preview containers
+- Denied state swaps preview to show the settings path
+
+### System Tray
+- Context-aware tray menu with three states:
+  - Not authenticated: Get API Key, Quit
+  - Authenticated but no permissions: Library, Logout, Quit
+  - Fully ready: Show/Hide Bar, Start/Stop Recording, Library, Logout, Quit
+- Tray menu updates synchronously on logout
+- Recording state reflected in tray icon (red when recording)
 
 ### Library Page Redesign
 - Redesigned Library page with sidebar + inline video player layout

@@ -1,97 +1,97 @@
 <!DOCTYPE html>
-<html data-theme="dark">
+<html>
 
 <head>
     <meta charset="UTF-8">
-    <title>Welcome — Async Recorder</title>
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <title>Welcome — Bloom</title>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
     <style>
-        /* Theme Variables */
-        [data-theme="dark"] {
-            --bg-primary: #0c0c0d;
-            --bg-secondary: #151515;
-            --bg-surface: #1b1b21;
-            --bg-hover: #242424;
-            --border: #2d2d2d;
-            --border-light: #44454c;
-            --text-primary: #f7f7f7;
-            --text-secondary: #969696;
-            --text-muted: #525252;
-            --accent: #ff4d00;
-            --accent-hover: #ff9061;
-            --error: #ef4444;
-        }
-
-        [data-theme="light"] {
-            --bg-primary: #faf9f7;
-            --bg-secondary: #ffffff;
-            --bg-surface: #f0eeeb;
-            --bg-hover: #e6e4e0;
-            --border: #d9d6d0;
-            --border-light: #c9c5be;
-            --text-primary: #0c0c0d;
-            --text-secondary: #4d4d4d;
-            --text-muted: #919191;
-            --accent: #e25612;
-            --accent-hover: #c14103;
-            --error: #dc2626;
-        }
-
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--bg-primary);
-            color: var(--text-primary);
+        html, body {
+            width: 100%;
+            height: 100%;
+            background: #08090C;
+            color: #f7f7f7;
+            font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             overflow: hidden;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
             -webkit-app-region: drag;
         }
 
-        button, input, a, label { -webkit-app-region: no-drag; }
+        button, input, a { -webkit-app-region: no-drag; }
 
-        .container {
+        /* -- Titlebar -- */
+        .titlebar {
+            height: 52px;
             display: flex;
-            flex-direction: column;
+            align-items: flex-start;
             justify-content: center;
-            height: 100vh;
-            padding: 40px 32px 24px;
+            flex-shrink: 0;
+            padding-top: 18px;
         }
 
-        .onboarding-header {
+        .titlebar-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        /* -- Content area -- */
+        .content {
+            flex: 1;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            gap: 10px;
-            margin-bottom: 4px;
+            justify-content: center;
+            padding: 0 36px;
+            gap: 0;
+            min-height: 0;
         }
 
         .brand-logo {
-            height: 24px;
-            border-radius: 5px;
+            width: 64px;
+            height: 64px;
+            border-radius: 14px;
+            margin-bottom: 12px;
         }
 
-        .brand-name {
-            font-size: 15px;
+        .brand-title {
+            font-size: 20px;
             font-weight: 600;
-            color: var(--text-primary);
+            color: #f7f7f7;
+            margin-bottom: 4px;
         }
 
-        .onboarding-subtitle {
-            font-size: 12px;
-            color: var(--text-muted);
-            margin-bottom: 16px;
+        .brand-subtitle {
+            font-size: 13px;
+            color: #525252;
+            text-align: center;
+            line-height: 1.5;
+            margin-bottom: 24px;
+        }
+
+        /* -- Form -- */
+        .form-area {
+            width: 100%;
+            max-width: 400px;
         }
 
         .input-group {
-            margin-bottom: 10px;
-            text-align: left;
+            margin-bottom: 14px;
         }
 
         .input-group label {
             display: block;
-            font-size: 10px;
+            font-size: 11px;
             font-weight: 600;
-            color: var(--text-muted);
-            margin-bottom: 5px;
+            color: #525252;
+            margin-bottom: 6px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
@@ -100,124 +100,208 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 5px;
+            margin-bottom: 6px;
         }
 
         .label-link {
-            font-size: 10px;
-            color: var(--accent);
+            font-size: 11px;
+            color: #EC5B16;
             text-decoration: none;
             font-weight: 500;
+            -webkit-app-region: no-drag;
+            cursor: pointer;
         }
 
         .label-link:hover { text-decoration: underline; }
 
-        .modal-input {
+        .form-input {
             width: 100%;
-            padding: 8px 10px;
-            background: var(--bg-surface);
-            border: 1px solid var(--border-light);
-            border-radius: 6px;
-            color: var(--text-primary);
-            font-size: 12px;
+            padding: 10px 12px;
+            background: #14151C;
+            border: 1px solid #2A2B35;
+            border-radius: 8px;
+            color: #f7f7f7;
+            font-size: 13px;
             font-family: inherit;
             outline: none;
             transition: border-color 0.2s;
         }
 
-        .modal-input:focus { border-color: var(--accent); }
-        .modal-input::placeholder { color: var(--text-muted); }
+        .form-input:focus { border-color: #EC5B16; }
+        .form-input::placeholder { color: #525252; }
 
-        .password-input-wrapper { position: relative; }
+        .password-wrapper { position: relative; }
 
         .password-toggle {
             position: absolute;
             right: 10px;
-            top: 50%;
-            transform: translateY(-50%);
+            top: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             cursor: pointer;
-            color: var(--text-muted);
-            font-size: 18px;
+            color: #525252;
             background: none;
             border: none;
             padding: 0;
-            line-height: 1;
+            -webkit-app-region: no-drag;
         }
 
-        .password-toggle:hover { color: var(--text-secondary); }
+        .password-toggle:hover { color: #969696; }
 
-        .error-message {
-            color: var(--error);
-            font-size: 11px;
-            min-height: 0;
-        }
-
-        .btn-primary {
+        /* -- Action button -- */
+        .btn-connect {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
             width: 100%;
-            padding: 10px;
-            background: var(--accent);
+            max-width: 400px;
+            padding: 10px 28px;
+            margin-top: 6px;
+            background: #EC5B16;
             color: #fff;
             border: none;
-            border-radius: 20px;
+            border-radius: 8px;
             font-size: 13px;
             font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
             font-family: inherit;
-            margin-top: 4px;
-            box-shadow: 0 2px 10px rgba(255, 77, 0, 0.3);
+            cursor: pointer;
+            transition: background 0.15s, opacity 0.15s;
+            -webkit-app-region: no-drag;
         }
 
-        .btn-primary:hover {
-            background: var(--accent-hover);
-            box-shadow: 0 4px 16px rgba(255, 77, 0, 0.4);
-            transform: translateY(-1px);
+        .btn-connect:hover:not(:disabled) {
+            background: #D4500F;
+            box-shadow: 0 2px 12px rgba(236, 91, 22, 0.3);
         }
 
-        .btn-primary:active {
-            transform: translateY(0);
-            box-shadow: 0 1px 6px rgba(255, 77, 0, 0.2);
+        .btn-connect:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        .btn-connect.processing {
+            background: #FF7E32;
+            pointer-events: none;
+        }
+
+        .btn-connect.done {
+            background: #22c55e;
+            pointer-events: none;
+        }
+
+        .btn-connect .material-icons-round {
+            font-size: 16px;
+        }
+
+        .btn-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* -- Error message -- */
+        .error-msg {
+            font-size: 12px;
+            color: #EF3535;
+            min-height: 18px;
+            text-align: center;
+            margin-top: 10px;
+            max-width: 400px;
+        }
+
+        /* -- Footer -- */
+        .footer {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 14px 0;
+            border-top: 1px solid #14151C;
+        }
+
+        .footer-logo {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+        }
+
+        .footer-text {
+            font-size: 11px;
+            color: #525252;
+            font-weight: 500;
+        }
+
+        .footer-link {
+            color: #525252;
+            text-decoration: none;
+            transition: color 0.15s;
+        }
+
+        .footer-link:hover {
+            color: #969696;
+            text-decoration: underline;
         }
     </style>
 </head>
 
 <body>
-    <div class="container">
-        <div class="onboarding-header">
-            <img src="img/logo.jpeg" alt="VideoDB" class="brand-logo">
-            <span class="brand-name">Async Recorder</span>
-        </div>
-        <div class="onboarding-subtitle">Enter your API key to start recording.</div>
+    <div class="titlebar">
+        <span class="titlebar-label">Welcome</span>
+    </div>
 
-        <div class="input-group">
-            <label>Your Name</label>
-            <input type="text" id="nameInput" class="modal-input" placeholder="e.g. John Doe">
-        </div>
+    <div class="content">
+        <img src="img/bloom_dark.png" alt="Bloom" class="brand-logo">
+        <div class="brand-title">Bloom</div>
+        <div class="brand-subtitle">Connect your VideoDB account to get started.</div>
 
-        <div class="input-group">
-            <div class="label-row">
-                <label>API Key</label>
-                <a href="#" id="getApiKeyLink" class="label-link">Get API Key</a>
+        <div class="form-area">
+            <div class="input-group">
+                <div class="label-row">
+                    <label>API Key</label>
+                    <a href="#" id="getApiKeyLink" class="label-link">Get API Key</a>
+                </div>
+                <div class="password-wrapper">
+                    <input type="password" id="apiKeyInput" class="form-input" placeholder="sk-..." style="font-family: monospace; padding-right: 36px;">
+                    <button id="toggleApiKey" class="password-toggle">
+                        <span class="material-icons-round" style="font-size: 18px;">visibility</span>
+                    </button>
+                </div>
             </div>
-            <div class="password-input-wrapper">
-                <input type="password" id="apiKeyInput" class="modal-input" placeholder="sk-..." style="font-family: monospace;">
-                <button id="toggleApiKey" class="password-toggle"><span class="material-icons">visibility</span></button>
-            </div>
         </div>
 
-        <div id="onboardingError" class="error-message"></div>
-        <button id="connectBtn" class="btn-primary">Connect</button>
+        <button class="btn-connect" id="connectBtn">
+            <span class="material-icons-round" id="connectIcon">vpn_key</span>
+            <span id="connectLabel">Connect</span>
+        </button>
+        <div class="error-msg" id="onboardingError"></div>
+    </div>
+
+    <div class="footer">
+        <img src="img/bloom_light.png" alt="" class="footer-logo">
+        <span class="footer-text">Powered by <a href="#" id="videodbLink" class="footer-link">VideoDB</a></span>
     </div>
 
     <script type="module">
-        const nameInput = document.getElementById('nameInput');
         const apiKeyInput = document.getElementById('apiKeyInput');
         const toggleApiKeyBtn = document.getElementById('toggleApiKey');
         const connectBtn = document.getElementById('connectBtn');
         const errorMsg = document.getElementById('onboardingError');
         const getApiKeyLink = document.getElementById('getApiKeyLink');
+        const videodbLink = document.getElementById('videodbLink');
 
-        // External link for API key
+        // External links
         if (getApiKeyLink) {
             getApiKeyLink.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -225,51 +309,81 @@
             });
         }
 
+        if (videodbLink) {
+            videodbLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                window.configAPI.openExternalLink('https://videodb.io');
+            });
+        }
+
         // Toggle API key visibility
         toggleApiKeyBtn.addEventListener('click', () => {
             const type = apiKeyInput.getAttribute('type') === 'password' ? 'text' : 'password';
             apiKeyInput.setAttribute('type', type);
-            const icon = toggleApiKeyBtn.querySelector('.material-icons');
+            const icon = toggleApiKeyBtn.querySelector('.material-icons-round');
             if (icon) icon.textContent = type === 'password' ? 'visibility' : 'visibility_off';
         });
 
-        // Connect button
+        // Connect button state management
+        const connectIcon = document.getElementById('connectIcon');
+        const connectLabel = document.getElementById('connectLabel');
+
+        function setConnectState(state) {
+            connectBtn.classList.remove('processing', 'done');
+            connectBtn.disabled = false;
+
+            switch (state) {
+                case 'default':
+                    connectIcon.textContent = 'vpn_key';
+                    connectLabel.textContent = 'Connect';
+                    break;
+                case 'processing':
+                    connectBtn.classList.add('processing');
+                    connectIcon.textContent = '';
+                    const spinner = document.createElement('span');
+                    spinner.className = 'btn-spinner';
+                    connectIcon.appendChild(spinner);
+                    connectLabel.textContent = 'Connecting...';
+                    break;
+                case 'done':
+                    connectBtn.classList.add('done');
+                    connectIcon.textContent = 'check';
+                    connectLabel.textContent = 'Connected';
+                    break;
+            }
+        }
+
         connectBtn.addEventListener('click', async () => {
-            const name = nameInput.value.trim();
             const apiKey = apiKeyInput.value.trim();
 
-            if (!name) {
-                errorMsg.textContent = 'Please enter your name.';
-                return;
-            }
             if (!apiKey) {
                 errorMsg.textContent = 'Please enter a valid API Key.';
                 return;
             }
 
-            connectBtn.textContent = 'Connecting...';
-            connectBtn.disabled = true;
+            setConnectState('processing');
             errorMsg.textContent = '';
 
             try {
-                const result = await window.configAPI.register({ name, apiKey });
+                const result = await window.configAPI.register({ name: 'User', apiKey });
 
                 if (result.success) {
-                    window.recorderAPI.modalComplete({
-                        type: 'onboarding',
-                        success: true,
-                        userName: result.userName
-                    });
+                    setConnectState('done');
+                    setTimeout(() => {
+                        window.recorderAPI.modalComplete({
+                            type: 'onboarding',
+                            success: true,
+                            userName: result.userName
+                        });
+                    }, 800);
                 } else {
                     errorMsg.textContent = result.error || 'Failed to connect.';
-                    connectBtn.disabled = false;
-                    connectBtn.textContent = 'Connect';
+                    setConnectState('default');
                 }
             } catch (err) {
                 console.error(err);
                 errorMsg.textContent = 'An unexpected error occurred.';
-                connectBtn.disabled = false;
-                connectBtn.textContent = 'Connect';
+                setConnectState('default');
             }
         });
     </script>

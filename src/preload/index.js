@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('recorderAPI', {
     modalComplete: (result) => ipcRenderer.send('modal-complete', result),
     setIgnoreMouse: (ignore) => ipcRenderer.send('set-ignore-mouse', ignore),
     hideBar: () => ipcRenderer.send('hide-bar'),
+    showBar: () => ipcRenderer.send('show-bar'),
     notifyRecordingState: (recording) => ipcRenderer.send('recording-state-changed', recording),
     showNotification: (title, body) => ipcRenderer.send('show-notification', { title, body }),
     openDisplayPicker: (payload) => ipcRenderer.invoke('open-display-picker', payload),

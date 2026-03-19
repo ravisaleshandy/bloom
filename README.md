@@ -10,10 +10,10 @@
 <br />
 <p align="center">
   <a href="https://videodb.io/">
-    <img src="https://codaio.imgix.net/docs/_s5lUnUCIU/blobs/bl-RgjcFrrJjj/d3cbc44f8584ecd42f2a97d981a144dce6a66d83ddd5864f723b7808c7d1dfbc25034f2f25e1b2188e78f78f37bcb79d3c34ca937cbb08ca8b3da1526c29da9a897ab38eb39d084fd715028b7cc60eb595c68ecfa6fa0bb125ec2b09da65664a4f172c2f" alt="Logo" width="300" height="">
+    <img src="src/renderer/img/bloom_dark.png" alt="Bloom" width="80" height="">
   </a>
 
-  <h1 align="center">Async Recorder</h1>
+  <h1 align="center">Bloom</h1>
 
   <p align="center">
     A Loom-style screen recording app built with Electron and the VideoDB Capture SDK.
@@ -30,15 +30,15 @@
 </p>
 
 <p align="center">
-  <img src="assets/home.png?v=2" alt="Async Recorder" width="400">
+  <img src="assets/Bloom.png" alt="Bloom" width="400">
 </p>
 
 ---
 
 ## Download
 
-- **Apple Silicon (M1/M2/M3/M4)**: [async-recorder-1.5.2-arm64.dmg](https://artifacts.videodb.io/async-recorder/async-recorder-1.5.2-arm64.dmg)
-- **Apple Intel**: [async-recorder-1.5.2-x64.dmg](https://artifacts.videodb.io/async-recorder/async-recorder-1.5.2-x64.dmg)
+- **Apple Silicon (M1/M2/M3/M4)**: [bloom-2.0.0-arm64.dmg](https://artifacts.videodb.io/bloom/bloom-2.0.0-arm64.dmg)
+- **Apple Intel**: [bloom-2.0.0-x64.dmg](https://artifacts.videodb.io/bloom/bloom-2.0.0-x64.dmg)
 
 <p>
   <em>Pre-built DMGs are available for macOS. Windows users can run from source — see <a href="#development-setup">Development Setup</a>. Linux support coming soon.</em>
@@ -50,11 +50,11 @@
 
 If you downloaded the pre-built app from the links above:
 
-1. **Mount the DMG** and drag Async Recorder to your Applications folder
+1. **Mount the DMG** and drag Bloom to your Applications folder
 
 2. **Remove quarantine attributes** to allow the app to run:
    ```bash
-   xattr -cr /Applications/Async\ Recorder.app
+   xattr -cr /Applications/Bloom.app
    ```
 
 3. **Launch the app** from Applications or Spotlight
@@ -67,14 +67,18 @@ If you downloaded the pre-built app from the links above:
 
 ## Features
 
+- Minimal floating bottom bar that stays on top of all windows
+- Click-through transparent areas — the bar never blocks your apps
 - Screen + microphone + system audio capture via [VideoDB Capture SDK](https://docs.videodb.io)
 - Draggable camera bubble overlay
+- Source toggles (mic, audio, camera, screen) work before and during recording
+- Display picker with multi-monitor support
 - Real-time session events via WebSocket
 - Recording timer with live duration display
 - Global keyboard shortcut (`Cmd+Shift+R`) to toggle recording
-- System tray icon with recording state and context menu
+- Context-aware system tray with recording state
 - Native toast notifications for recording events
-- Quick rename prompt after each recording
+- Guided permissions flow with animated previews
 - Library page with sidebar list, search, and inline video player
 - Copy Link with stateful feedback (generating → copied → toast)
 - Sync button to resolve pending recordings from server
@@ -175,12 +179,12 @@ graph LR
 ```
 src/
 ├── main/                       # Electron Main Process
-│   ├── index.js                # App entry point, window creation
+│   ├── index.js                # App entry, windows, tray, IPC routing
 │   ├── db/
 │   │   └── database.js         # SQLite via sql.js
 │   ├── ipc/                    # IPC handlers
-│   │   ├── capture.js          # Recording start/stop, channels
-│   │   ├── permissions.js      # Permission check/request
+│   │   ├── capture.js          # Recording start/stop, channels, devices
+│   │   ├── permissions.js      # Permission check/request/open settings
 │   │   ├── camera.js           # Camera bubble control
 │   │   └── auth.js             # Login, logout, onboarding
 │   ├── lib/                    # Utilities
@@ -192,14 +196,23 @@ src/
 │       ├── videodb.service.js  # VideoDB SDK wrapper
 │       ├── session.service.js  # Session tokens, WebSocket, sync
 │       └── insights.service.js # Transcript + subtitle indexing
-├── renderer/                   # Renderer scripts (context-isolated)
-│   ├── renderer.js             # Main window UI
-│   ├── history.js              # Library window — list, player, download, share, sync
-│   ├── camera.js               # Camera bubble
-│   ├── pages/                  # HTML pages
-│   └── styles/                 # CSS
+├── renderer/                   # Renderer (context-isolated)
+│   ├── index.html              # Floating bar page
+│   ├── renderer.js             # Bar init + event routing
+│   ├── permissions.html        # Permissions modal window
+│   ├── onboarding.html         # Onboarding modal window
+│   ├── history.html            # Library window
+│   ├── history.js              # Library — list, player, download, share, sync
+│   ├── display-picker.html     # Display picker popup
+│   ├── camera.html             # Camera bubble
+│   ├── ui/
+│   │   └── bar.js              # Bar controls, toggles, timer, devices
+│   ├── utils/
+│   │   ├── permissions.js      # Permission check/request utility
+│   │   └── logger.js           # Renderer-side logging
+│   └── img/                    # Icons, brand assets, animated previews
 └── preload/
-    └── preload.js              # Context bridge (renderer ↔ main)
+    └── index.js                # Context bridge (renderer ↔ main)
 
 build/
 ├── afterPack.js                # electron-builder hook (codesign, plist patch)
@@ -229,8 +242,8 @@ Set in a `.env` file at the project root, or as an environment variable.
 ```bash
 # Delete the app database (stored in Electron userData)
 # macOS
-rm ~/Library/Application\ Support/async-recorder/async-recorder.db
-rm ~/Library/Application\ Support/async-recorder/config.json
+rm ~/Library/Application\ Support/bloom/bloom.db
+rm ~/Library/Application\ Support/bloom/config.json
 ```
 Then run `npm start`
 

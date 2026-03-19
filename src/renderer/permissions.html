@@ -21,15 +21,17 @@
         body {
             display: flex;
             flex-direction: column;
+            -webkit-app-region: drag;
         }
 
-        /* -- Titlebar drag region -- */
+        button, input, a { -webkit-app-region: no-drag; }
+
+        /* -- Titlebar -- */
         .titlebar {
             height: 52px;
             display: flex;
             align-items: flex-start;
             justify-content: center;
-            -webkit-app-region: drag;
             flex-shrink: 0;
             padding-top: 18px;
         }
@@ -174,6 +176,17 @@
             justify-content: center;
             margin-bottom: 24px;
             overflow: hidden;
+            position: relative;
+        }
+
+        .gif-preview::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 10px;
+            box-shadow: inset 0 0 30px 12px #08090C;
+            pointer-events: none;
+            z-index: 1;
         }
 
         .gif-preview img {
@@ -300,10 +313,10 @@
         <span class="material-icons-round step-icon">mic</span>
         <div class="step-title">Microphone Access</div>
         <div class="step-subtitle">
-            Async Recorder needs microphone access to capture audio from your meetings and recordings.
+            Bloom needs microphone access to capture audio from your meetings and recordings.
         </div>
         <div class="gif-preview" id="gifMic">
-            <img src="img/mic_default.webp" alt="How to grant mic access">
+            <img id="micPreviewImg" src="img/mic_default.webp" alt="How to grant mic access">
         </div>
         <button class="btn-grant" id="btnMic">
             <span class="material-icons-round">mic</span>
@@ -317,7 +330,7 @@
         <span class="material-icons-round step-icon">screen_share</span>
         <div class="step-title">Screen Recording Access</div>
         <div class="step-subtitle">
-            Async Recorder needs screen recording access to capture your screen during recording sessions.
+            Bloom needs screen recording access to capture your screen during recording sessions.
         </div>
         <div class="gif-preview" id="gifScreen">
             <img id="screenPreviewImg" src="img/screen_default.webp" alt="How to grant screen access">
@@ -356,12 +369,16 @@
         const btnScreen = document.getElementById('btnScreen');
         const btnScreenLabel = document.getElementById('btnScreenLabel');
         const errorScreen = document.getElementById('errorScreen');
+        const micPreviewImg = document.getElementById('micPreviewImg');
         const screenPreviewImg = document.getElementById('screenPreviewImg');
 
         let micGranted = false;
         let screenGranted = false;
+        let currentStep = 'mic'; // track which step we're on
 
         function setStep(step) {
+            currentStep = step;
+
             // Tab states
             if (step === 'mic') {
                 tabMic.className = 'step-tab active';
@@ -397,27 +414,35 @@
             }
         }
 
+        // Only check the permission relevant to the current step.
+        // Checking screen permission on macOS can trigger a system prompt,
+        // so we defer it until the user advances to step 2.
         async function checkPermissions() {
             const mic = await permissionUtil.check('mic');
-            const screen = await permissionUtil.check('screen');
             micGranted = mic.granted;
+
+            if (!micGranted) {
+                setStep('mic');
+                return false;
+            }
+
+            // Mic is granted — now safe to check screen
+            btnMic.classList.add('granted');
+            btnMicLabel.textContent = 'Granted';
+            btnMic.disabled = true;
+
+            const screen = await permissionUtil.check('screen');
             screenGranted = screen.granted;
 
-            if (micGranted && screenGranted) {
+            if (screenGranted) {
                 setStep('done');
                 setTimeout(() => {
                     window.recorderAPI.modalComplete({ type: 'permissions', success: true });
                 }, 1200);
                 return true;
             }
-            if (micGranted) {
-                btnMic.classList.add('granted');
-                btnMicLabel.textContent = 'Granted';
-                btnMic.disabled = true;
-                setStep('screen');
-            } else {
-                setStep('mic');
-            }
+
+            setStep('screen');
             return false;
         }
 
@@ -446,12 +471,14 @@
                     btnMic.disabled = false;
                     btnMicLabel.textContent = 'Open Settings';
                     errorMic.textContent = 'Permission denied. Click to open System Settings.';
+                    if (micPreviewImg) micPreviewImg.src = 'img/mic_denied.webp';
                     await window.recorderAPI.openSystemSettings('mic');
                 }
             } catch (e) {
                 btnMic.disabled = false;
                 btnMicLabel.textContent = 'Open Settings';
                 errorMic.textContent = 'Error: ' + e.message;
+                if (micPreviewImg) micPreviewImg.src = 'img/mic_denied.webp';
             }
         });
 
@@ -493,10 +520,10 @@
             }
         });
 
-        // Initial check
+        // Initial check — only checks mic on first run (screen deferred)
         const done = await checkPermissions();
 
-        // Poll for system settings changes
+        // Poll for system settings changes (step-aware)
         if (!done) {
             const poller = setInterval(async () => {
                 if (document.hidden) return;

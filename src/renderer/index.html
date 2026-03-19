@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Async Recorder</title>
+    <title>Bloom</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         /* ===========================================
@@ -44,13 +44,13 @@
             padding: 8px 12px;
             gap: 6px;
             height: 52px;
-            margin: 0 auto 6px;
+            margin: 0 auto 28px;
             background: rgba(20, 20, 20, 0.95);
             backdrop-filter: blur(24px);
             -webkit-backdrop-filter: blur(24px);
             border: none;
             border-radius: 14px;
-            box-shadow: none;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
             transition: all 0.3s ease;
         }
 
@@ -79,6 +79,30 @@
         .bar-close img {
             width: 18px;
             height: 18px;
+        }
+
+        /* ===========================================
+           Drag Grip
+           =========================================== */
+        .bar-grip {
+            display: grid;
+            grid-template-columns: repeat(2, 4px);
+            grid-template-rows: repeat(3, 4px);
+            gap: 3px;
+            padding: 4px 2px;
+            cursor: grab;
+            flex-shrink: 0;
+        }
+
+        .bar-grip:active {
+            cursor: grabbing;
+        }
+
+        .bar-grip .dot {
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
         }
 
         /* ===========================================
@@ -372,7 +396,7 @@
             border-radius: 14px;
             background: rgba(20, 20, 20, 0.95);
             border: none;
-            box-shadow: none;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
         }
 
         .floating-bar.recording .bar-close,
@@ -542,6 +566,13 @@
 
 <body>
     <div id="mainApp" class="floating-bar">
+
+        <!-- Drag Grip -->
+        <div class="bar-grip">
+            <span class="dot"></span><span class="dot"></span>
+            <span class="dot"></span><span class="dot"></span>
+            <span class="dot"></span><span class="dot"></span>
+        </div>
 
         <!-- Close Button -->
         <button id="btn-close" class="bar-close" data-tooltip="Hide bar">

@@ -68,9 +68,7 @@ export async function initBar(onStartSessionCallback) {
 function initCloseButton() {
     if (elements.btnClose) {
         elements.btnClose.addEventListener('click', () => {
-            if (window.recorderAPI && window.recorderAPI.hideBar) {
-                window.recorderAPI.hideBar();
-            }
+            window.recorderAPI.hideBar();
         });
     }
 }

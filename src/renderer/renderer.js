@@ -14,7 +14,7 @@ import { initBar, setSessionActive, setSessionLoading, resetSessionUI, getActive
 if (!window.hasRegisteredRecorderEvents) {
   window.hasRegisteredRecorderEvents = true;
 
-  window.recorderAPI.onRecorderEvent((eventData) => {
+  window.recorderAPI.onRecorderEvent(async (eventData) => {
     const { event, data } = eventData;
     console.log('[Recorder Event]', event, data);
 
@@ -53,15 +53,28 @@ if (!window.hasRegisteredRecorderEvents) {
         }
         break;
       }
-      case 'modal:complete':
+      case 'modal:complete': {
         console.log('[Modal Complete]', data);
-        if (data.type === 'onboarding') {
-          loadDevices();
+        if (data.type === 'permissions' && data.success) {
+          // Permissions granted — check if auth is still needed
+          const config = await window.configAPI.getConfig();
+          if (!config.accessToken) {
+            await window.recorderAPI.showOnboardingModal();
+            break; // Wait for onboarding modal:complete
+          }
+          // Auth present — load devices and show bar
+          await loadDevices();
+          window.recorderAPI.showBar();
+        }
+        if (data.type === 'onboarding' && data.success) {
+          await loadDevices();
+          window.recorderAPI.showBar();
         }
         // Re-enable start button after modals complete
         const btnStart = document.getElementById('btn-start-session');
         if (btnStart) btnStart.disabled = false;
         break;
+      }
       case 'error':
         addLog(`Error: ${data.message || 'Unknown error'}`, 'error');
         break;
@@ -95,21 +108,27 @@ async function startSessionFlow() {
 // Initialization
 (async () => {
   try {
-    addLog('🚀 App initializing...');
+    addLog('App initializing...');
 
     // Init floating bar (wires up button handlers)
     console.log('Initializing bar...');
     await initBar(startSessionFlow);
 
-    // Check permissions — open modal window if not granted
+    // Check permissions — only check screen if mic is already granted
+    // to avoid triggering the macOS screen recording system prompt prematurely.
     const micOk = (await window.recorderAPI.checkMicPermission()) === 'granted';
-    const screenOk = (await window.recorderAPI.checkScreenPermission()) === 'granted';
+    let screenOk = false;
+    if (micOk) {
+      screenOk = (await window.recorderAPI.checkScreenPermission()) === 'granted';
+    }
 
     if (!micOk || !screenOk) {
       console.log('Permissions missing, opening modal...');
       const btnStart = document.getElementById('btn-start-session');
       if (btnStart) btnStart.disabled = true;
       await window.recorderAPI.showPermissionsModal();
+      // Don't load devices or show bar — wait for modal:complete event
+      return;
     }
 
     // Check onboarding — open modal window if no API key
@@ -119,19 +138,19 @@ async function startSessionFlow() {
       const btnStart = document.getElementById('btn-start-session');
       if (btnStart) btnStart.disabled = true;
       await window.recorderAPI.showOnboardingModal();
+      // Don't load devices or show bar — wait for modal:complete event
+      return;
     }
 
-    // Load available devices (requires auth)
-    const configCheck = await window.configAPI.getConfig();
-    if (configCheck.accessToken) {
-      console.log('Loading available devices...');
-      await loadDevices();
-    }
+    // Everything ready — load devices and show bar
+    console.log('Loading available devices...');
+    await loadDevices();
+    window.recorderAPI.showBar();
 
     addLog('Ready');
     console.log('Initialization complete.');
   } catch (error) {
     console.error('Initialization failed:', error);
-    addLog(`❌ Init Error: ${error.message}`, 'error');
+    addLog(`Init Error: ${error.message}`, 'error');
   }
 })();
