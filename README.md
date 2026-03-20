@@ -8,37 +8,33 @@
 
 <!-- PROJECT LOGO -->
 <br />
-<p align="center">
-  <a href="https://videodb.io/">
-    <img src="https://codaio.imgix.net/docs/_s5lUnUCIU/blobs/bl-RgjcFrrJjj/d3cbc44f8584ecd42f2a97d981a144dce6a66d83ddd5864f723b7808c7d1dfbc25034f2f25e1b2188e78f78f37bcb79d3c34ca937cbb08ca8b3da1526c29da9a897ab38eb39d084fd715028b7cc60eb595c68ecfa6fa0bb125ec2b09da65664a4f172c2f" alt="Logo" width="300" height="">
-  </a>
-
-  <h1 align="center">Async Recorder</h1>
-
-  <p align="center">
-    A Loom-style screen recording app built with Electron and the VideoDB Capture SDK.
-    <br />
-    <a href="https://docs.videodb.io"><strong>Explore the docs »</strong></a>
-    <br />
-    <br />
-    <a href="#features">View Features</a>
-    ·
-    <a href="#download">Download</a>
-    ·
-    <a href="https://github.com/video-db/async-recorder/issues">Report Bug</a>
-  </p>
-</p>
+<table align="center" border="0" cellspacing="0" cellpadding="0">
+  <tr>
+    <td valign="middle"><a href="https://videodb.io/"><img src="assets/videodb-logo.jpeg" alt="VideoDB" height="52"></a></td>
+    <td valign="middle"><img src="assets/add.svg" alt="+" height="16"></td>
+    <td valign="middle"><a href="https://videodb.io/"><img src="assets/Colour_Black Wordmark.png" alt="Bloom" height="52"></a></td>
+  </tr>
+</table>
 
 <p align="center">
-  <img src="assets/home.png?v=2" alt="Async Recorder" width="400">
+  A Loom-style screen recording app built with Electron and the VideoDB Capture SDK.
+  <br />
+  <a href="https://docs.videodb.io"><strong>Explore the docs »</strong></a>
+  <br />
+  <br />
+  <a href="#features">View Features</a>
+  ·
+  <a href="#download">Download</a>
+  ·
+  <a href="https://github.com/video-db/async-recorder/issues">Report Bug</a>
 </p>
 
 ---
 
 ## Download
 
-- **Apple Silicon (M1/M2/M3/M4)**: [async-recorder-1.5.2-arm64.dmg](https://artifacts.videodb.io/async-recorder/async-recorder-1.5.2-arm64.dmg)
-- **Apple Intel**: [async-recorder-1.5.2-x64.dmg](https://artifacts.videodb.io/async-recorder/async-recorder-1.5.2-x64.dmg)
+- **Apple Silicon (M1/M2/M3/M4)**: [bloom-2.0.0-arm64.dmg](https://artifacts.videodb.io/bloom/bloom-2.0.0-arm64.dmg)
+- **Apple Intel**: [bloom-2.0.0-x64.dmg](https://artifacts.videodb.io/bloom/bloom-2.0.0-x64.dmg)
 
 <p>
   <em>Pre-built DMGs are available for macOS. Windows users can run from source — see <a href="#development-setup">Development Setup</a>. Linux support coming soon.</em>
@@ -50,11 +46,11 @@
 
 If you downloaded the pre-built app from the links above:
 
-1. **Mount the DMG** and drag Async Recorder to your Applications folder
+1. **Mount the DMG** and drag Bloom to your Applications folder
 
 2. **Remove quarantine attributes** to allow the app to run:
    ```bash
-   xattr -cr /Applications/Async\ Recorder.app
+   xattr -cr /Applications/Bloom.app
    ```
 
 3. **Launch the app** from Applications or Spotlight
@@ -67,18 +63,15 @@ If you downloaded the pre-built app from the links above:
 
 ## Features
 
-- Screen + microphone + system audio capture via [VideoDB Capture SDK](https://docs.videodb.io)
-- Draggable camera bubble overlay
-- Real-time session events via WebSocket
-- Recording timer with live duration display
-- Global keyboard shortcut (`Cmd+Shift+R`) to toggle recording
-- System tray icon with recording state and context menu
-- Native toast notifications for recording events
-- Quick rename prompt after each recording
-- Recording history with pipeline status tracking (Recording → Processing → Transcription → Ready)
-- Auto-indexing with transcript generation and subtitles
-- On-demand share link generation
-- In-app video playback (HLS)
+- **Screen recording** — Capture screen, microphone, and system audio via [VideoDB Capture SDK](https://docs.videodb.io)
+- **Camera overlay** — Draggable camera bubble during recording
+- **Floating bar** — Always-on-top control bar that never blocks your apps
+- **Multi-monitor** — Display picker to choose which screen to record
+- **Library** — Browse, search, play, rename, and download recordings
+- **Transcription** — Automatic transcript generation with subtitled playback
+- **Chat with video** — Ask questions about your recording via [VideoDB Chat](https://chat.videodb.io)
+- **Share** — One-click shareable link for any recording
+- **Keyboard shortcut** — `Cmd+Shift+R` to start/stop recording from anywhere
 
 ## Development Setup
 
@@ -101,8 +94,9 @@ On first launch, grant microphone and screen recording permissions, then enter y
 1. **Connect** — Enter your name and API key on first launch
 2. **Record** — Click "Start Recording" to capture screen, mic, and system audio
 3. **Camera** — Toggle the camera bubble overlay from source controls
-4. **Review** — Click the history icon to browse past recordings, view transcripts, and share links
-5. **Share** — Click "Share" on any recording to generate a fresh link via the VideoDB API
+4. **Library** — Open the Library to browse recordings, play them inline, and manage downloads
+5. **Share** — Click "Copy Link" on any recording to generate and copy a share link
+6. **Download** — Use the split download button to save the video file or transcript
 
 ## Architecture
 
@@ -147,22 +141,22 @@ graph LR
     WS -->|"session events"| UPLOAD
     API -->|"index / transcribe"| IDX
 
-    classDef purple fill:#2d2563,stroke:#7c6af7,stroke-width:1.5px,color:#c4b8f8
-    classDef teal   fill:#0d3d38,stroke:#2dd4bf,stroke-width:1.5px,color:#81e8d8
-    classDef coral  fill:#3d1a20,stroke:#f38ba8,stroke-width:1.5px,color:#f9c0cb
-    classDef green  fill:#0d2e1a,stroke:#a6e3a1,stroke-width:1.5px,color:#b8f0c0
-    classDef db     fill:#1a1a2e,stroke:#7c6af7,stroke-width:1.5px,color:#c4b8f8
+    classDef orange fill:#2e1a08,stroke:#EC5B16,stroke-width:1.5px,color:#f5a36a
+    classDef amber  fill:#2e2008,stroke:#E8A317,stroke-width:1.5px,color:#f5d080
+    classDef red    fill:#2e0d08,stroke:#FF4000,stroke-width:1.5px,color:#ff8a60
+    classDef green  fill:#0d2e1a,stroke:#4CAF50,stroke-width:1.5px,color:#8ed4a0
+    classDef db     fill:#1a1208,stroke:#EC5B16,stroke-width:1.5px,color:#f5a36a
 
-    class R,M,SDK purple
-    class CC,WS,API,BIN teal
-    class SC,MIC,SA coral
+    class R,M,SDK orange
+    class CC,WS,API,BIN amber
+    class SC,MIC,SA red
     class UPLOAD,IDX,TRX,STREAM green
     class DB db
 
-    style EA fill:#12102a,stroke:#7c6af7,stroke-width:2px,color:#a89ef5
-    style VS fill:#071f1c,stroke:#2dd4bf,stroke-width:2px,color:#5ecfc4
-    style LC fill:#1f0d10,stroke:#f38ba8,stroke-width:2px,color:#f0a0b0
-    style VC fill:#071810,stroke:#a6e3a1,stroke-width:2px,color:#8ed4a0
+    style EA fill:#1a0e04,stroke:#EC5B16,stroke-width:2px,color:#f5a36a
+    style VS fill:#1a1504,stroke:#E8A317,stroke-width:2px,color:#f5d080
+    style LC fill:#1a0804,stroke:#FF4000,stroke-width:2px,color:#ff8a60
+    style VC fill:#071810,stroke:#4CAF50,stroke-width:2px,color:#8ed4a0
 ```
 
 **Recording flow:** The app creates a `CaptureClient` which spawns a native binary to capture screen, mic, and system audio. Chunks are uploaded to VideoDB Cloud in real-time. A WebSocket connection delivers session events (started, stopped, exported) back to the app.
@@ -174,12 +168,12 @@ graph LR
 ```
 src/
 ├── main/                       # Electron Main Process
-│   ├── index.js                # App entry point, window creation
+│   ├── index.js                # App entry, windows, tray, IPC routing
 │   ├── db/
 │   │   └── database.js         # SQLite via sql.js
 │   ├── ipc/                    # IPC handlers
-│   │   ├── capture.js          # Recording start/stop, channels
-│   │   ├── permissions.js      # Permission check/request
+│   │   ├── capture.js          # Recording start/stop, channels, devices
+│   │   ├── permissions.js      # Permission check/request/open settings
 │   │   ├── camera.js           # Camera bubble control
 │   │   └── auth.js             # Login, logout, onboarding
 │   ├── lib/                    # Utilities
@@ -191,14 +185,23 @@ src/
 │       ├── videodb.service.js  # VideoDB SDK wrapper
 │       ├── session.service.js  # Session tokens, WebSocket, sync
 │       └── insights.service.js # Transcript + subtitle indexing
-├── renderer/                   # Renderer scripts (context-isolated)
-│   ├── renderer.js             # Main window UI
-│   ├── history.js              # History window + HLS player
-│   ├── camera.js               # Camera bubble
-│   ├── pages/                  # HTML pages
-│   └── styles/                 # CSS
+├── renderer/                   # Renderer (context-isolated)
+│   ├── index.html              # Floating bar page
+│   ├── renderer.js             # Bar init + event routing
+│   ├── permissions.html        # Permissions modal window
+│   ├── onboarding.html         # Onboarding modal window
+│   ├── history.html            # Library window
+│   ├── history.js              # Library — list, player, download, share, sync
+│   ├── display-picker.html     # Display picker popup
+│   ├── camera.html             # Camera bubble
+│   ├── ui/
+│   │   └── bar.js              # Bar controls, toggles, timer, devices
+│   ├── utils/
+│   │   ├── permissions.js      # Permission check/request utility
+│   │   └── logger.js           # Renderer-side logging
+│   └── img/                    # Icons, brand assets, animated previews
 └── preload/
-    └── preload.js              # Context bridge (renderer ↔ main)
+    └── index.js                # Context bridge (renderer ↔ main)
 
 build/
 ├── afterPack.js                # electron-builder hook (codesign, plist patch)
@@ -228,8 +231,8 @@ Set in a `.env` file at the project root, or as an environment variable.
 ```bash
 # Delete the app database (stored in Electron userData)
 # macOS
-rm ~/Library/Application\ Support/async-recorder/async-recorder.db
-rm ~/Library/Application\ Support/async-recorder/config.json
+rm ~/Library/Application\ Support/bloom/bloom.db
+rm ~/Library/Application\ Support/bloom/config.json
 ```
 Then run `npm start`
 
@@ -257,8 +260,6 @@ MIT
 ---
 
 <p align="center">Made with ❤️ by the <a href="https://videodb.io">VideoDB</a> team</p>
-
----
 
 <!-- MARKDOWN LINKS & IMAGES -->
 [electron-shield]: https://img.shields.io/badge/Electron-39.0-47848F?style=for-the-badge&logo=electron&logoColor=white

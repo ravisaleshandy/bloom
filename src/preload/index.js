@@ -11,7 +11,11 @@ contextBridge.exposeInMainWorld('recorderAPI', {
     getRecordings: () => ipcRenderer.invoke('get-recordings'),
     syncPendingRecordings: () => ipcRenderer.invoke('sync-pending-recordings'),
     getShareUrl: (videoId) => ipcRenderer.invoke('get-share-url', videoId),
+    downloadVideo: (videoId) => ipcRenderer.invoke('download-video', videoId),
+    downloadTranscript: (recordingId) => ipcRenderer.invoke('download-transcript', recordingId),
+    openChatUrl: (videoId, collectionId) => ipcRenderer.invoke('open-chat-url', videoId, collectionId),
     updateRecordingName: (id, name) => ipcRenderer.invoke('update-recording-name', id, name),
+    listDevices: () => ipcRenderer.invoke('list-devices'),
 
     // Electron specific permission checks logic (optional fallback)
     checkMicPermission: () => ipcRenderer.invoke('check-mic-permission'),
@@ -21,9 +25,20 @@ contextBridge.exposeInMainWorld('recorderAPI', {
     requestCameraPermission: () => ipcRenderer.invoke('request-camera-permission'),
     toggleCamera: (show) => ipcRenderer.invoke(show ? 'camera-show' : 'camera-hide'),
     openSystemSettings: (type) => ipcRenderer.invoke('open-system-settings', type),
-    openHistoryWindow: () => ipcRenderer.invoke('open-history-window'),
+    openHistoryWindow: (focusSessionId) => ipcRenderer.invoke('open-history-window', focusSessionId),
+    onFocusRecording: (callback) => ipcRenderer.on('history:focus-recording', (_event, sessionId) => callback(sessionId)),
+    showPermissionsModal: () => ipcRenderer.invoke('show-permissions-modal'),
+    showOnboardingModal: () => ipcRenderer.invoke('show-onboarding-modal'),
+    modalComplete: (result) => ipcRenderer.send('modal-complete', result),
+    setIgnoreMouse: (ignore) => ipcRenderer.send('set-ignore-mouse', ignore),
+    hideBar: () => ipcRenderer.send('hide-bar'),
+    showBar: () => ipcRenderer.send('show-bar'),
     notifyRecordingState: (recording) => ipcRenderer.send('recording-state-changed', recording),
     showNotification: (title, body) => ipcRenderer.send('show-notification', { title, body }),
+    openDisplayPicker: (payload) => ipcRenderer.invoke('open-display-picker', payload),
+    onDisplayPickerInit: (callback) => ipcRenderer.on('display-picker:init', (_event, data) => callback(data)),
+    selectDisplayFromPicker: (selection) => ipcRenderer.send('display-picker:select', selection),
+    cancelDisplayPicker: () => ipcRenderer.send('display-picker:cancel'),
 });
 
 // Config API

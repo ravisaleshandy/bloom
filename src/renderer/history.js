@@ -7,13 +7,16 @@ let activeRecordingId = null;
 let activeRecording = null;
 let activeStreamUrl = null;
 let refreshInterval = null;
+let currentSort = 'date-newest';
+let pendingFocusSessionId = null;
 
 const STATUS_MAP = {
-    recording:  { label: 'Recording',    cls: 'status-recording' },
-    pending:    { label: 'Processing',   cls: 'status-pending' },
-    processing: { label: 'Generating transcription', cls: 'status-processing' },
-    ready:      { label: 'Ready',        cls: 'status-ready' },
-    failed:     { label: 'Failed',       cls: 'status-failed' },
+    recording:  { label: 'Recording',   cls: 'status-recording' },
+    pending:    { label: 'Processing',   cls: 'status-processing' },
+    processing: { label: 'Processing',   cls: 'status-processing' },
+    indexing:   { label: 'Transcribing',   cls: 'status-done' },
+    ready:      { label: 'Done',         cls: 'status-done' },
+    failed:     { label: 'Error',        cls: 'status-error' },
 };
 
 function getStatusInfo(status) {
@@ -29,27 +32,33 @@ function getDisplayName(recording) {
     return 'Untitled Recording';
 }
 
+function formatDuration(recording) {
+    if (recording.created_at) {
+        return new Date(recording.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return '';
+}
+
 // --- Init ---
 
 async function init() {
-    // Apply saved theme
-    try {
-        const config = await window.configAPI.getConfig();
-        const theme = config.theme || 'dark';
-        document.documentElement.setAttribute('data-theme', theme);
-    } catch (_) {}
+    // Listen for focus-recording events from the main process (e.g. after recording stops)
+    window.recorderAPI.onFocusRecording((sessionId) => {
+        pendingFocusSessionId = sessionId;
+        loadHistoryList();
+    });
 
     loadHistoryList();
 
-    document.getElementById('refreshBtn')?.addEventListener('click', async () => {
-        await window.recorderAPI.syncPendingRecordings();
-        loadHistoryList();
-    });
-    document.getElementById('closeHistoryBtn')?.addEventListener('click', () => window.close());
+    document.getElementById('homeBtn')?.addEventListener('click', () => window.close());
+
+    // Auto-sync pending recordings when library opens
+    syncPendingRecordings();
     document.getElementById('shareBtn')?.addEventListener('click', handleShare);
+    document.getElementById('chatBarBtn')?.addEventListener('click', handleChatWithVideo);
     document.getElementById('editNameBtn')?.addEventListener('click', () => startNameEdit());
 
-    const input = document.getElementById('videoTitleInput');
+    const input = document.getElementById('playerTitleInput');
     if (input) {
         input.addEventListener('blur', () => commitNameEdit());
         input.addEventListener('keydown', (e) => {
@@ -57,12 +66,77 @@ async function init() {
             if (e.key === 'Escape') { cancelNameEdit(); }
         });
     }
+
+    // Download split button
+    const downloadChevron = document.getElementById('downloadChevronBtn');
+    const downloadMenu = document.getElementById('downloadMenu');
+    if (downloadChevron && downloadMenu) {
+        downloadChevron.addEventListener('click', (e) => {
+            e.stopPropagation();
+            downloadMenu.classList.toggle('visible');
+        });
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.download-split')) {
+                downloadMenu.classList.remove('visible');
+            }
+        });
+    }
+    document.getElementById('downloadBtn')?.addEventListener('click', () => handleDownloadVideo());
+    document.getElementById('downloadVideoBtn')?.addEventListener('click', () => {
+        document.getElementById('downloadMenu')?.classList.remove('visible');
+        handleDownloadVideo();
+    });
+    document.getElementById('downloadTranscriptBtn')?.addEventListener('click', () => {
+        document.getElementById('downloadMenu')?.classList.remove('visible');
+        handleDownloadTranscript();
+    });
+
+    // Sort dropdown
+    const sortBtn = document.getElementById('sortBtn');
+    const sortDropdown = document.getElementById('sortDropdown');
+    if (sortBtn && sortDropdown) {
+        sortBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sortDropdown.classList.toggle('visible');
+        });
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.sort-dropdown-wrap')) {
+                sortDropdown.classList.remove('visible');
+            }
+        });
+        sortDropdown.querySelectorAll('.sort-option:not(.disabled)').forEach(opt => {
+            opt.addEventListener('click', () => {
+                const sort = opt.dataset.sort;
+                if (sort === currentSort) return;
+                currentSort = sort;
+                // Update radio states
+                sortDropdown.querySelectorAll('.sort-option').forEach(o => o.classList.remove('active'));
+                opt.classList.add('active');
+                // Update label
+                const labels = { 'date-newest': 'Newest', 'date-oldest': 'Oldest' };
+                const sortLabel = document.getElementById('sortLabel');
+                if (sortLabel) sortLabel.textContent = labels[sort] || 'Newest';
+                // Re-sort list
+                applySortToList();
+                sortDropdown.classList.remove('visible');
+            });
+        });
+    }
+
+    // Search (filters list client-side by name)
+    document.getElementById('searchInput')?.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        document.querySelectorAll('.video-item').forEach(item => {
+            const title = item.querySelector('.video-item-title')?.textContent.toLowerCase() || '';
+            item.style.display = title.includes(query) ? '' : 'none';
+        });
+    });
 }
 
 // --- List ---
 
 async function loadHistoryList() {
-    const listContainer = document.getElementById('historyListContainer');
+    const listContainer = document.getElementById('videoListContainer');
     if (!listContainer) return;
 
     listContainer.innerHTML = '<div class="empty-state">Loading...</div>';
@@ -76,108 +150,120 @@ async function loadHistoryList() {
             return;
         }
 
-        recordings.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        sortRecordings(recordings);
         listContainer.innerHTML = '';
 
-        const grouped = bucketRecordings(recordings);
-        for (const [groupName, items] of Object.entries(grouped)) {
-            if (items.length === 0) continue;
-            const header = document.createElement('div');
-            header.className = 'history-group-header';
-            header.textContent = groupName;
-            listContainer.appendChild(header);
+        recordings.forEach(rec => listContainer.appendChild(createVideoListItem(rec)));
 
-            items.forEach(rec => listContainer.appendChild(createHistoryListItem(rec)));
+        // Auto-select: pending focus session > previously active > first
+        let toSelect = null;
+        let shouldAutoplay = false;
+        if (pendingFocusSessionId) {
+            toSelect = recordings.find(r => r.session_id === pendingFocusSessionId);
+            shouldAutoplay = true;
         }
-
-        // Auto-select first or preserve selection
-        const toSelect = recordings.find(r => r.id === activeRecordingId) || recordings[0];
-        if (toSelect) selectRecording(toSelect);
+        if (!toSelect) {
+            toSelect = recordings.find(r => r.id === activeRecordingId) || recordings[0];
+        }
+        if (toSelect) {
+            selectRecording(toSelect, shouldAutoplay);
+            if (pendingFocusSessionId && toSelect.session_id === pendingFocusSessionId) {
+                pendingFocusSessionId = null;
+                startNameEdit();
+            }
+        }
 
         scheduleAutoRefresh(recordings);
     } catch (error) {
-        listContainer.innerHTML = `<div class="empty-state" style="color:var(--error)">Failed to load: ${error.message}</div>`;
+        listContainer.innerHTML = `<div class="empty-state" style="color:#EF3535">Failed to load: ${error.message}</div>`;
     }
 }
 
 function scheduleAutoRefresh(recordings) {
     if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
     const hasInProgress = recordings.some(r =>
-        r.insights_status === 'recording' || r.insights_status === 'pending' || r.insights_status === 'processing'
+        r.insights_status === 'recording' || r.insights_status === 'pending' || r.insights_status === 'processing' || r.insights_status === 'indexing'
     );
     if (hasInProgress) {
         refreshInterval = setInterval(loadHistoryList, 5000);
     }
 }
 
-function bucketRecordings(recordings) {
-    const buckets = { "Today": [], "Yesterday": [], "Earlier": [] };
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
-
-    recordings.forEach(rec => {
-        if (!rec.created_at) { buckets["Earlier"].push(rec); return; }
-        const d = new Date(rec.created_at);
-        const dateOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-        if (dateOnly.getTime() === today.getTime()) buckets["Today"].push(rec);
-        else if (dateOnly.getTime() === yesterday.getTime()) buckets["Yesterday"].push(rec);
-        else buckets["Earlier"].push(rec);
-    });
-    return buckets;
+function sortRecordings(recordings) {
+    if (currentSort === 'date-oldest') {
+        recordings.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    } else {
+        recordings.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    }
 }
 
-function createHistoryListItem(recording) {
+function applySortToList() {
+    loadHistoryList();
+}
+
+function createVideoListItem(recording) {
     const div = document.createElement('div');
-    div.className = 'history-item';
+    div.className = 'video-item';
     div.dataset.id = recording.id;
     if (recording.id === activeRecordingId) div.classList.add('active');
 
     const name = getDisplayName(recording);
-    const timeStr = recording.created_at
-        ? new Date(recording.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        : '';
+    const timeStr = formatDuration(recording);
     const status = getStatusInfo(recording.insights_status);
 
-    div.innerHTML = `
-        <div class="history-item-title">${name}</div>
-        <div class="history-item-meta">
-            <span class="history-item-time">${timeStr}</span>
-            <span class="status-badge ${status.cls}">
-                <span class="status-dot"></span>
-                ${status.label}
-            </span>
-        </div>
-    `;
+    // Use textContent for name to prevent XSS
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'video-item-title';
+    titleSpan.textContent = name;
 
-    div.addEventListener('click', () => selectRecording(recording));
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'video-item-time';
+    timeSpan.textContent = timeStr;
+
+    const details = document.createElement('div');
+    details.className = 'video-item-details';
+    details.appendChild(titleSpan);
+    details.appendChild(timeSpan);
+
+    const badge = document.createElement('span');
+    badge.className = `status-badge ${status.cls}`;
+    badge.innerHTML = `<span class="status-icon"><span class="status-dot"></span></span>${status.label}`;
+
+    div.appendChild(details);
+    div.appendChild(badge);
+
+    div.addEventListener('click', () => selectRecording(recording, true));
     return div;
 }
 
 // --- Selection ---
 
-function selectRecording(recording) {
+function selectRecording(recording, autoplay = false) {
     activeRecordingId = recording.id;
     activeRecording = recording;
     updateActiveItemStyle();
-    loadVideo(recording);
-    updateHeader(recording);
-    updateTranscriptPanel(recording);
+    showPlayer(recording, autoplay);
+    updatePlayerHeader(recording);
 }
 
 function updateActiveItemStyle() {
-    document.querySelectorAll('.history-item').forEach(item => {
+    document.querySelectorAll('.video-item').forEach(item => {
         item.classList.toggle('active', Number(item.dataset.id) === activeRecordingId);
     });
 }
 
 // --- Player ---
 
-function loadVideo(recording) {
+function showPlayer(recording, autoplay = false) {
     const video = document.getElementById('historyVideoPlayer');
+    const emptyPlayer = document.getElementById('emptyPlayer');
+    const playerArea = document.getElementById('videoPlayerArea');
+    if (emptyPlayer) emptyPlayer.style.display = 'none';
+    if (playerArea) playerArea.style.display = '';
+
     if (!video) return;
 
-    // Skip reload if the same stream is already playing
+    // Skip reload if the same stream is already loaded
     if (recording.stream_url && recording.stream_url === activeStreamUrl) return;
 
     // Clear previous playback
@@ -192,42 +278,54 @@ function loadVideo(recording) {
         hlsInstance = new Hls();
         hlsInstance.loadSource(recording.stream_url);
         hlsInstance.attachMedia(video);
-        hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-            video.play().catch(() => {});
-        });
+        if (autoplay) {
+            hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+                video.play().catch(() => {});
+            });
+        }
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = recording.stream_url;
-        video.addEventListener('loadedmetadata', () => { video.play().catch(() => {}); }, { once: true });
+        if (autoplay) {
+            video.addEventListener('loadedmetadata', () => { video.play().catch(() => {}); }, { once: true });
+        }
     }
 }
 
-// --- Header ---
+// --- Player Header ---
 
-function updateHeader(recording) {
-    const header = document.getElementById('videoHeader');
-    const title = document.getElementById('currentVideoTitle');
-    const titleRow = document.getElementById('videoTitleRow');
-    const titleInput = document.getElementById('videoTitleInput');
-    const badge = document.getElementById('videoStatusBadge');
-    const shareBtn = document.getElementById('shareBtn');
+function updatePlayerHeader(recording) {
+    const header = document.getElementById('playerHeader');
+    const title = document.getElementById('playerTitle');
+    const titleInput = document.getElementById('playerTitleInput');
+    const downloadSplit = document.getElementById('downloadSplit');
 
     if (header) header.style.display = 'flex';
 
-    // Title
-    if (title) title.textContent = getDisplayName(recording);
-    if (titleRow) titleRow.style.display = 'flex';
-    if (titleInput) titleInput.style.display = 'none';
-
-    // Status badge
-    if (badge) {
-        const status = getStatusInfo(recording.insights_status);
-        badge.innerHTML = `<span class="status-badge ${status.cls}"><span class="status-dot"></span>${status.label}</span>`;
+    // Title — skip if user is actively editing
+    const isEditing = titleInput && titleInput.style.display !== 'none';
+    if (!isEditing) {
+        if (title) {
+            title.textContent = getDisplayName(recording);
+            title.style.display = '';
+        }
+        if (titleInput) titleInput.style.display = 'none';
     }
 
-    // Share button — only enabled when video is ready
-    if (shareBtn) {
-        shareBtn.disabled = !recording.video_id;
-        document.getElementById('shareBtnLabel').textContent = 'Share';
+    // Share button — enabled when video is ready
+    setShareState(recording.video_id ? 'default' : 'disabled');
+
+    // Download split — enabled when stream URL exists
+    if (downloadSplit) {
+        downloadSplit.classList.toggle('disabled', !recording.stream_url);
+    }
+
+    // Chat button — enabled when both video_id and collection_id exist
+    const chatBtn = document.getElementById('chatBarBtn');
+    if (chatBtn) {
+        const canChat = !!(recording.video_id && recording.collection_id);
+        chatBtn.disabled = !canChat;
+        chatBtn.style.opacity = canChat ? '' : '0.4';
+        chatBtn.style.pointerEvents = canChat ? '' : 'none';
     }
 }
 
@@ -235,11 +333,13 @@ function updateHeader(recording) {
 
 function startNameEdit() {
     if (!activeRecording) return;
-    const titleRow = document.getElementById('videoTitleRow');
-    const titleInput = document.getElementById('videoTitleInput');
-    if (!titleRow || !titleInput) return;
+    const title = document.getElementById('playerTitle');
+    const editBtn = document.getElementById('editNameBtn');
+    const titleInput = document.getElementById('playerTitleInput');
+    if (!title || !titleInput) return;
 
-    titleRow.style.display = 'none';
+    title.style.display = 'none';
+    if (editBtn) editBtn.style.display = 'none';
     titleInput.style.display = 'block';
     titleInput.value = getDisplayName(activeRecording);
     titleInput.focus();
@@ -247,20 +347,22 @@ function startNameEdit() {
 }
 
 async function commitNameEdit() {
-    const titleRow = document.getElementById('videoTitleRow');
-    const titleInput = document.getElementById('videoTitleInput');
-    if (!titleRow || !titleInput || !activeRecording) return;
+    const title = document.getElementById('playerTitle');
+    const editBtn = document.getElementById('editNameBtn');
+    const titleInput = document.getElementById('playerTitleInput');
+    if (!title || !titleInput || !activeRecording) return;
 
     const newName = titleInput.value.trim();
-    titleRow.style.display = 'flex';
+    title.style.display = '';
+    if (editBtn) editBtn.style.display = '';
     titleInput.style.display = 'none';
 
     if (newName && newName !== getDisplayName(activeRecording)) {
         activeRecording.name = newName;
-        document.getElementById('currentVideoTitle').textContent = newName;
+        title.textContent = newName;
 
         // Update the sidebar item
-        const item = document.querySelector(`.history-item[data-id="${activeRecording.id}"] .history-item-title`);
+        const item = document.querySelector(`.video-item[data-id="${activeRecording.id}"] .video-item-title`);
         if (item) item.textContent = newName;
 
         await window.recorderAPI.updateRecordingName(activeRecording.id, newName);
@@ -268,69 +370,128 @@ async function commitNameEdit() {
 }
 
 function cancelNameEdit() {
-    const titleRow = document.getElementById('videoTitleRow');
-    const titleInput = document.getElementById('videoTitleInput');
-    if (titleRow) titleRow.style.display = 'flex';
+    const title = document.getElementById('playerTitle');
+    const editBtn = document.getElementById('editNameBtn');
+    const titleInput = document.getElementById('playerTitleInput');
+    if (title) title.style.display = '';
+    if (editBtn) editBtn.style.display = '';
     if (titleInput) titleInput.style.display = 'none';
 }
 
 // --- Share ---
 
-async function handleShare() {
-    const shareBtn = document.getElementById('shareBtn');
+function setShareState(state) {
+    const btn = document.getElementById('shareBtn');
+    const icon = document.getElementById('shareBtnIcon');
     const label = document.getElementById('shareBtnLabel');
-    if (!shareBtn || !activeRecording?.video_id) return;
+    if (!btn || !icon || !label) return;
 
-    // Enter loading state
-    shareBtn.disabled = true;
-    label.innerHTML = '<span class="spinner-small"></span> Generating...';
+    btn.classList.remove('processing', 'done');
+    btn.disabled = false;
+
+    switch (state) {
+        case 'default':
+            icon.textContent = 'link';
+            label.textContent = 'Copy Link';
+            break;
+        case 'processing':
+            btn.classList.add('processing');
+            icon.textContent = '';
+            const spinner = document.createElement('span');
+            spinner.className = 'btn-spinner';
+            icon.appendChild(spinner);
+            label.textContent = 'Generating link...';
+            break;
+        case 'done':
+            btn.classList.add('done');
+            icon.textContent = 'check';
+            label.textContent = 'Link Copied';
+            break;
+        case 'disabled':
+            icon.textContent = 'link';
+            label.textContent = 'Copy Link';
+            btn.disabled = true;
+            break;
+    }
+}
+
+async function handleShare() {
+    if (!activeRecording?.video_id) return;
+
+    setShareState('processing');
 
     try {
         const result = await window.recorderAPI.getShareUrl(activeRecording.video_id);
         if (result.success && (result.playerUrl || result.streamUrl)) {
             const url = result.playerUrl || result.streamUrl;
             await navigator.clipboard.writeText(url);
+            setShareState('done');
             showToast('Link copied to clipboard');
+            setTimeout(() => setShareState('default'), 2500);
         } else {
             showToast(result.error || 'Could not generate link');
+            setShareState('default');
         }
     } catch (err) {
         showToast('Failed to generate link');
+        setShareState('default');
     }
-
-    // Restore button
-    label.innerHTML = 'Share';
-    shareBtn.disabled = false;
 }
 
-// --- Transcript ---
+// --- Chat with Video ---
 
-function updateTranscriptPanel(recording) {
-    const panel = document.getElementById('insightsContent');
-    if (!panel) return;
+function setChatState(state) {
+    const btn = document.getElementById('chatBarBtn');
+    if (!btn) return;
+    const icon = btn.querySelector('.material-icons-round');
+    const label = btn.querySelector('span:last-child');
+    if (!icon || !label) return;
 
-    if (recording.insights_status === 'ready' && recording.insights) {
-        try {
-            const data = typeof recording.insights === 'string'
-                ? JSON.parse(recording.insights) : recording.insights;
-            if (data?.transcript) {
-                panel.innerHTML = `<div style="line-height:1.7; color:var(--text-secondary); font-size:13px;">
-                    ${data.transcript.replace(/\n/g, '<br>')}
-                </div>`;
-                return;
-            }
-        } catch (e) { /* fall through */ }
+    btn.classList.remove('chat-redirecting');
+
+    switch (state) {
+        case 'default':
+            icon.textContent = 'chat_bubble_outline';
+            label.textContent = 'Chat with video';
+            btn.style.pointerEvents = '';
+            break;
+        case 'redirecting':
+            btn.classList.add('chat-redirecting');
+            icon.textContent = 'open_in_new';
+            label.textContent = 'Redirecting...';
+            btn.style.pointerEvents = 'none';
+            break;
+    }
+}
+
+async function handleChatWithVideo() {
+    if (!activeRecording?.video_id || !activeRecording?.collection_id) return;
+
+    setChatState('redirecting');
+
+    try {
+        const result = await window.recorderAPI.openChatUrl(activeRecording.video_id, activeRecording.collection_id);
+        if (!result.success) {
+            showToast(result.error || 'Could not open chat');
+        }
+    } catch (err) {
+        showToast('Failed to open chat');
     }
 
-    const status = getStatusInfo(recording.insights_status);
-    const isProcessing = ['recording', 'pending', 'processing'].includes(recording.insights_status);
+    setTimeout(() => setChatState('default'), 2000);
+}
 
-    panel.innerHTML = `
-        <div class="empty-state">
-            ${isProcessing ? '<div class="spinner-small" style="margin: 0 auto 10px; border-color: var(--border-light); border-top-color: var(--text-muted);"></div>' : ''}
-            <div>${status.label}${isProcessing ? '...' : ''}</div>
-        </div>
-    `;
+// --- Auto-sync pending recordings ---
+
+async function syncPendingRecordings() {
+    try {
+        const result = await window.recorderAPI.syncPendingRecordings();
+        if (result.success && result.resolved > 0) {
+            loadHistoryList();
+        }
+    } catch (_) {
+        // Silent — startup sync already handles retries
+    }
 }
 
 // --- Toast ---
@@ -342,6 +503,88 @@ function showToast(message) {
     msg.textContent = message;
     toast.classList.add('visible');
     setTimeout(() => toast.classList.remove('visible'), 2500);
+}
+
+// --- Download ---
+
+function setDownloadState(state) {
+    const split = document.getElementById('downloadSplit');
+    const icon = document.getElementById('downloadBtnIcon');
+    const label = document.getElementById('downloadBtnLabel');
+    if (!split || !icon || !label) return;
+
+    split.classList.remove('downloading', 'downloaded', 'disabled');
+
+    switch (state) {
+        case 'default':
+            icon.textContent = 'download';
+            label.textContent = 'Download';
+            break;
+        case 'downloading':
+            split.classList.add('downloading');
+            icon.textContent = '';
+            const spinner = document.createElement('span');
+            spinner.className = 'btn-spinner';
+            icon.appendChild(spinner);
+            label.textContent = 'Preparing...';
+            break;
+        case 'downloaded':
+            split.classList.add('downloaded');
+            icon.textContent = 'check';
+            label.textContent = 'Downloaded';
+            break;
+        case 'disabled':
+            split.classList.add('disabled');
+            icon.textContent = 'download';
+            label.textContent = 'Download';
+            break;
+    }
+}
+
+async function handleDownloadVideo() {
+    if (!activeRecording?.video_id) return;
+
+    setDownloadState('downloading');
+
+    try {
+        const result = await window.recorderAPI.downloadVideo(activeRecording.video_id);
+        if (result.success) {
+            setDownloadState('downloaded');
+            showToast('Video downloaded');
+            setTimeout(() => setDownloadState('default'), 2500);
+        } else if (result.error === 'Cancelled') {
+            setDownloadState('default');
+        } else {
+            showToast(result.error || 'Download failed');
+            setDownloadState('default');
+        }
+    } catch (err) {
+        showToast('Download failed');
+        setDownloadState('default');
+    }
+}
+
+async function handleDownloadTranscript() {
+    if (!activeRecording?.id) return;
+
+    setDownloadState('downloading');
+
+    try {
+        const result = await window.recorderAPI.downloadTranscript(activeRecording.id);
+        if (result.success) {
+            setDownloadState('downloaded');
+            showToast('Transcript downloaded');
+            setTimeout(() => setDownloadState('default'), 2500);
+        } else if (result.error === 'Cancelled') {
+            setDownloadState('default');
+        } else {
+            showToast(result.error || 'Download failed');
+            setDownloadState('default');
+        }
+    } catch (err) {
+        showToast('Download failed');
+        setDownloadState('default');
+    }
 }
 
 // Start

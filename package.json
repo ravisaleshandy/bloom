@@ -1,7 +1,7 @@
 {
-  "name": "async-recorder",
-  "version": "1.5.2",
-  "description": "A sample Electron application for screen and camera recording using VideoDB Capture SDK",
+  "name": "bloom",
+  "version": "2.0.0",
+  "description": "Bloom — Screen recorder powered by VideoDB",
   "main": "src/main/index.js",
   "scripts": {
     "start": "electron .",
@@ -17,8 +17,8 @@
     "electron-builder": "^24.6.4"
   },
   "build": {
-    "appId": "com.videodb.async-recorder",
-    "productName": "Async Recorder",
+    "appId": "com.videodb.bloom",
+    "productName": "Bloom",
     "files": [
       "src/**/*",
       "package.json"
@@ -34,9 +34,9 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
-        "NSScreenCaptureUsageDescription": "Async Recorder needs screen recording permission to capture your display during sessions.",
-        "NSMicrophoneUsageDescription": "Async Recorder needs microphone access to capture audio during sessions.",
-        "NSCameraUsageDescription": "Async Recorder needs camera access to capture your webcam during sessions."
+        "NSScreenCaptureUsageDescription": "Bloom needs screen recording permission to capture your display during sessions.",
+        "NSMicrophoneUsageDescription": "Bloom needs microphone access to capture audio during sessions.",
+        "NSCameraUsageDescription": "Bloom needs camera access to capture your webcam during sessions."
       },
       "target": [
         {
@@ -47,10 +47,10 @@
           ]
         }
       ],
-      "artifactName": "async-recorder-${version}-${arch}.${ext}"
+      "artifactName": "bloom-${version}-${arch}.${ext}"
     },
     "dmg": {
-      "title": "Async Recorder ${version}",
+      "title": "Bloom ${version}",
       "icon": "build/icon.icns",
       "window": {
         "width": 540,
@@ -66,6 +66,6 @@
   "dependencies": {
     "dotenv": "^17.2.3",
     "sql.js": "^1.11.0",
-    "videodb": "^0.2.2"
+    "videodb": "^0.2.3"
   }
 }

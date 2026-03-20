@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, nativeImage, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, nativeImage, Notification, shell, systemPreferences } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { randomUUID } = require('crypto');
@@ -28,6 +28,10 @@ const { registerAllHandlers } = require('./ipc');
 let mainWindow = null;
 let cameraWindow = null;
 let historyWindow = null;
+let modalWindow = null;
+let displayPickerWindow = null;
+let pendingDisplayPickerResolve = null;
+let removeDisplayPickerParentListeners = null;
 let tray = null;
 let videodbService = null;
 let isShuttingDown = false;
@@ -38,16 +42,28 @@ let isRecording = false;
 // ============================================================================
 
 function createMainWindow() {
+  const { screen } = require('electron');
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+
+  const barWidth = 940;
+  const windowHeight = 120;  // 52px bar + 6px bottom margin + ~62px shadow headroom
+  const marginBottom = 8;
+
   mainWindow = new BrowserWindow({
-    width: 380,
-    height: 290,
-    minHeight: 250,
-    maxHeight: 360,
-    minWidth: 340,
-    maxWidth: 480,
-    resizable: true,
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 16 },
+    width: barWidth,
+    height: windowHeight,
+    x: Math.round((screenWidth - barWidth) / 2),
+    y: screenHeight - windowHeight - marginBottom,
+    transparent: true,
+    frame: false,
+    resizable: false,
+    alwaysOnTop: true,
+    hasShadow: false,
+    skipTaskbar: true,
+    focusable: true,
+    show: false,
+    backgroundColor: '#00000000',
     webPreferences: {
       preload: PRELOAD_SCRIPT,
       contextIsolation: true,
@@ -55,7 +71,150 @@ function createMainWindow() {
     },
   });
 
+  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  mainWindow.setContentProtection(true);
+  // setVisibleOnAllWorkspaces can force-show on macOS — hide again
+  mainWindow.hide();
+
+  // Restore dock icon — setVisibleOnAllWorkspaces can hide it on some macOS versions
+  if (process.platform === 'darwin' && app.dock) {
+    app.dock.show();
+  }
+
+  // Click-through: transparent area passes clicks to apps behind.
+  // Renderer toggles this off when mouse enters the bar element.
+  mainWindow.setIgnoreMouseEvents(true, { forward: true });
+
   mainWindow.loadFile(path.join(RENDERER_DIR, 'index.html'));
+}
+
+// ============================================================================
+// Display Picker (separate child window)
+// ============================================================================
+
+function resolveDisplayPicker(result) {
+  if (!pendingDisplayPickerResolve) return;
+  const resolve = pendingDisplayPickerResolve;
+  pendingDisplayPickerResolve = null;
+  resolve(result);
+}
+
+function detachDisplayPickerParentListeners() {
+  if (removeDisplayPickerParentListeners) {
+    removeDisplayPickerParentListeners();
+    removeDisplayPickerParentListeners = null;
+  }
+}
+
+function closeDisplayPicker(result = { cancelled: true }) {
+  resolveDisplayPicker(result);
+  detachDisplayPickerParentListeners();
+
+  if (displayPickerWindow && !displayPickerWindow.isDestroyed()) {
+    const w = displayPickerWindow;
+    displayPickerWindow = null;
+    w.close();
+  } else {
+    displayPickerWindow = null;
+  }
+}
+
+function openDisplayPicker(payload) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return Promise.resolve({ cancelled: true });
+  }
+
+  // Close any existing picker
+  closeDisplayPicker({ cancelled: true });
+
+  const { screen } = require('electron');
+  const displays = Array.isArray(payload?.displays) ? payload.displays : [];
+  const selectedDisplayId = payload?.selectedDisplayId || null;
+
+  // Compute bounds — position above the anchor pill
+  const itemHeight = 34;
+  const maxItems = 7;
+  const contentHeight = Math.max(40, Math.min(displays.length, maxItems) * itemHeight);
+  const width = Math.max(180, Math.min(Number(payload?.preferredWidth) || 220, 400));
+
+  const anchorRect = payload?.anchorRect || {};
+  const parentBounds = mainWindow.getBounds();
+  const anchorCenterX = parentBounds.x + (Number(anchorRect.x) || 0) + Math.round((Number(anchorRect.width) || 0) / 2);
+  const anchorTopY = parentBounds.y + (Number(anchorRect.y) || 0);
+
+  let x = Math.round(anchorCenterX - width / 2);
+  let y = Math.round(anchorTopY - contentHeight - 12);
+
+  // Clamp to screen work area
+  const nearest = screen.getDisplayNearestPoint({ x: anchorCenterX, y: anchorTopY });
+  const wa = nearest.workArea;
+  x = Math.max(wa.x + 8, Math.min(x, wa.x + wa.width - width - 8));
+  y = Math.max(wa.y + 8, Math.min(y, wa.y + wa.height - contentHeight - 8));
+
+  return new Promise((resolve) => {
+    pendingDisplayPickerResolve = resolve;
+
+    displayPickerWindow = new BrowserWindow({
+      width,
+      height: contentHeight,
+      x,
+      y,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      hasShadow: false,
+      focusable: true,
+      parent: mainWindow,
+      webPreferences: {
+        preload: PRELOAD_SCRIPT,
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+
+    // Close picker when parent moves/hides
+    const onParentChange = () => closeDisplayPicker({ cancelled: true });
+    mainWindow.on('move', onParentChange);
+    mainWindow.on('resize', onParentChange);
+    mainWindow.on('hide', onParentChange);
+    mainWindow.on('closed', onParentChange);
+
+    removeDisplayPickerParentListeners = () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      mainWindow.off('move', onParentChange);
+      mainWindow.off('resize', onParentChange);
+      mainWindow.off('hide', onParentChange);
+      mainWindow.off('closed', onParentChange);
+    };
+
+    displayPickerWindow.on('blur', () => closeDisplayPicker({ cancelled: true }));
+
+    // Guard: only clean up if this is still the current picker (prevents
+    // race when fast clicks create a new picker before the old one's
+    // 'closed' event fires).
+    const thisWindow = displayPickerWindow;
+    displayPickerWindow.on('closed', () => {
+      if (displayPickerWindow === thisWindow) {
+        displayPickerWindow = null;
+        detachDisplayPickerParentListeners();
+        resolveDisplayPicker({ cancelled: true });
+      }
+    });
+
+    displayPickerWindow.loadFile(path.join(RENDERER_DIR, 'display-picker.html'));
+    displayPickerWindow.webContents.once('did-finish-load', () => {
+      if (!displayPickerWindow || displayPickerWindow.isDestroyed()) return;
+      displayPickerWindow.webContents.send('display-picker:init', { displays, selectedDisplayId });
+      displayPickerWindow.show();
+      displayPickerWindow.focus();
+    });
+  });
 }
 
 function createCameraWindow() {
@@ -92,20 +251,22 @@ function createCameraWindow() {
   }
 }
 
-function createHistoryWindow() {
+function createHistoryWindow(focusSessionId) {
   if (historyWindow && !historyWindow.isDestroyed()) {
     historyWindow.show();
     historyWindow.focus();
+    if (focusSessionId) {
+      historyWindow.webContents.send('history:focus-recording', focusSessionId);
+    }
     return;
   }
 
-  const theme = getAppConfig().theme || 'dark';
-
   historyWindow = new BrowserWindow({
-    width: 900,
+    width: 1120,
     height: 700,
-    title: 'Recording History',
-    backgroundColor: theme === 'light' ? '#faf9f7' : '#0c0c0d',
+    title: 'Library',
+    backgroundColor: '#000000',
+    titleBarStyle: 'hiddenInset',
     webPreferences: {
       preload: PRELOAD_SCRIPT,
       contextIsolation: true,
@@ -115,6 +276,45 @@ function createHistoryWindow() {
 
   historyWindow.loadFile(path.join(RENDERER_DIR, 'history.html'));
   historyWindow.on('closed', () => { historyWindow = null; });
+
+  if (focusSessionId) {
+    historyWindow.webContents.once('did-finish-load', () => {
+      historyWindow.webContents.send('history:focus-recording', focusSessionId);
+    });
+  }
+}
+
+function createModalWindow(page) {
+  if (modalWindow && !modalWindow.isDestroyed()) {
+    modalWindow.focus();
+    return modalWindow;
+  }
+
+  const theme = getAppConfig().theme || 'dark';
+  const sizes = {
+    permissions: { width: 560, height: 640 },
+    onboarding: { width: 480, height: 520 },
+  };
+  const size = sizes[page] || { width: 480, height: 400 };
+
+  modalWindow = new BrowserWindow({
+    width: size.width,
+    height: size.height,
+    center: true,
+    resizable: false,
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 16, y: 16 },
+    backgroundColor: theme === 'light' ? '#faf9f7' : '#0c0c0d',
+    webPreferences: {
+      preload: PRELOAD_SCRIPT,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  modalWindow.loadFile(path.join(RENDERER_DIR, `${page}.html`));
+  modalWindow.on('closed', () => { modalWindow = null; });
+  return modalWindow;
 }
 
 // ============================================================================
@@ -122,14 +322,21 @@ function createHistoryWindow() {
 // ============================================================================
 
 /**
- * Create a macOS template tray icon (black on transparent, 36x36 @2x).
- * @param {boolean} filled - true for filled circle (recording), false for outline (idle)
+ * Create a tray icon (36x36 @2x). Circle-in-circle design.
+ * Idle: black template image (macOS adapts to menu bar).
+ * Recording: red (#FD5337), non-template so color is preserved.
  */
-function createTrayIcon(filled) {
+function createTrayIcon(recording) {
   const size = 36; // 18pt @2x retina
   const buf = Buffer.alloc(size * size * 4);
   const center = size / 2;
-  const radius = filled ? 7 : 8;
+  const outerRadius = 13.5;
+  const outerStroke = 1.5;
+  const innerRadius = 5.5;
+
+  const r = recording ? 0xFD : 0;
+  const g = recording ? 0x53 : 0;
+  const b = recording ? 0x37 : 0;
 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -139,76 +346,153 @@ function createTrayIcon(filled) {
       const idx = (y * size + x) * 4;
 
       let alpha = 0;
-      if (filled) {
-        if (dist <= radius) alpha = 255;
-        else if (dist <= radius + 1) alpha = Math.round(255 * (radius + 1 - dist));
-      } else {
-        const strokeHalf = 1;
-        const edge = Math.abs(dist - radius);
-        if (edge <= strokeHalf) alpha = 255;
-        else if (edge <= strokeHalf + 1) alpha = Math.round(255 * (strokeHalf + 1 - edge));
+
+      // Inner filled circle
+      if (dist <= innerRadius) {
+        alpha = 255;
+      } else if (dist <= innerRadius + 1) {
+        alpha = Math.round(255 * (innerRadius + 1 - dist));
       }
 
-      buf[idx] = 0;         // R
-      buf[idx + 1] = 0;     // G
-      buf[idx + 2] = 0;     // B
-      buf[idx + 3] = alpha;  // A
+      // Outer ring
+      const edge = Math.abs(dist - outerRadius);
+      if (edge <= outerStroke / 2) {
+        alpha = 255;
+      } else if (edge <= outerStroke / 2 + 1) {
+        alpha = Math.max(alpha, Math.round(255 * (outerStroke / 2 + 1 - edge)));
+      }
+
+      // macOS expects BGRA byte order
+      buf[idx] = b;
+      buf[idx + 1] = g;
+      buf[idx + 2] = r;
+      buf[idx + 3] = alpha;
     }
   }
 
   const img = nativeImage.createFromBuffer(buf, { width: size, height: size, scaleFactor: 2.0 });
-  img.setTemplateImage(true);
+  img.setTemplateImage(!recording);
   return img;
 }
 
 function createTray() {
   tray = new Tray(createTrayIcon(false));
-  tray.setToolTip('Async Recorder');
+  tray.setToolTip('Bloom');
   updateTrayMenu();
-
-  tray.on('click', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-      mainWindow.focus();
-    }
-  });
 }
 
 function updateTrayMenu() {
   if (!tray) return;
   tray.setImage(createTrayIcon(isRecording));
-  const menu = Menu.buildFromTemplate([
-    {
-      label: isRecording ? 'Stop Recording' : 'Start Recording',
-      click: () => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('recorder-event', { event: 'shortcut:toggle-recording', data: {} });
-          mainWindow.show();
-        }
+
+  const isAuthenticated = !!getAppConfig().accessToken;
+
+  // Check permissions (passive — does not trigger system prompts)
+  let permissionsGranted = false;
+  if (isAuthenticated && process.platform === 'darwin') {
+    const micStatus = systemPreferences.getMediaAccessStatus('microphone');
+    const screenStatus = systemPreferences.getMediaAccessStatus('screen');
+    permissionsGranted = micStatus === 'granted' && screenStatus === 'granted';
+  } else if (isAuthenticated) {
+    permissionsGranted = true;
+  }
+
+  let template;
+
+  if (!isAuthenticated) {
+    // Not logged in — minimal menu
+    template = [
+      { label: 'Bloom', enabled: false },
+      { type: 'separator' },
+      {
+        label: 'Get API Key',
+        click: () => {
+          shell.openExternal('https://console.videodb.io/dashboard');
+        },
       },
-    },
-    { type: 'separator' },
-    {
-      label: 'History',
-      click: () => createHistoryWindow(),
-    },
-    {
-      label: 'Show Window',
-      click: () => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.show();
-          mainWindow.focus();
-        }
+      { type: 'separator' },
+      { label: 'Quit', click: () => app.quit() },
+    ];
+  } else if (!permissionsGranted) {
+    // Logged in but permissions missing — no bar/recording controls
+    template = [
+      { label: 'Bloom', enabled: false },
+      { type: 'separator' },
+      { label: 'Library', click: () => createHistoryWindow() },
+      {
+        label: 'Logout',
+        click: async () => {
+          if (historyWindow && !historyWindow.isDestroyed()) historyWindow.close();
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.hide();
+            await mainWindow.webContents.executeJavaScript(`
+              (async () => {
+                const btn = document.getElementById('btn-start-session');
+                if (btn) btn.disabled = true;
+                await window.configAPI.logout();
+                window.recorderAPI.showOnboardingModal();
+              })()
+            `);
+          }
+          updateTrayMenu();
+        },
       },
-    },
-    { type: 'separator' },
-    {
-      label: 'Quit',
-      click: () => app.quit(),
-    },
-  ]);
-  tray.setContextMenu(menu);
-  tray.setToolTip(isRecording ? 'Async Recorder — Recording...' : 'Async Recorder');
+      { type: 'separator' },
+      { label: 'Quit', click: () => app.quit() },
+    ];
+  } else {
+    // Fully ready — full menu
+    const barVisible = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible();
+    template = [
+      { label: 'Bloom', enabled: false },
+      { type: 'separator' },
+      {
+        label: barVisible ? 'Hide Floating Bar' : 'Show Floating Bar',
+        click: () => {
+          if (!mainWindow || mainWindow.isDestroyed()) return;
+          if (mainWindow.isVisible()) {
+            mainWindow.hide();
+          } else {
+            mainWindow.show();
+          }
+          updateTrayMenu();
+        },
+      },
+      {
+        label: isRecording ? 'Stop Recording' : 'Start Recording',
+        click: () => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('recorder-event', { event: 'shortcut:toggle-recording', data: {} });
+          }
+        },
+      },
+      { type: 'separator' },
+      { label: 'Library', click: () => createHistoryWindow() },
+      {
+        label: 'Logout',
+        click: async () => {
+          if (historyWindow && !historyWindow.isDestroyed()) historyWindow.close();
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.hide();
+            await mainWindow.webContents.executeJavaScript(`
+              (async () => {
+                const btn = document.getElementById('btn-start-session');
+                if (btn) btn.disabled = true;
+                await window.configAPI.logout();
+                window.recorderAPI.showOnboardingModal();
+              })()
+            `);
+          }
+          updateTrayMenu();
+        },
+      },
+      { type: 'separator' },
+      { label: 'Quit', click: () => app.quit() },
+    ];
+  }
+
+  tray.setContextMenu(Menu.buildFromTemplate(template));
+  tray.setToolTip(isRecording ? 'Bloom — Recording...' : 'Bloom');
 }
 
 // ============================================================================
@@ -232,7 +516,8 @@ async function startServices() {
 
   // 5. Sync orphaned recordings from previous sessions
   const apiKey = _getCurrentUserApiKey();
-  syncOrphanedSessions(apiKey, videodbService);
+  const userId = _getCurrentUserId();
+  syncOrphanedSessions(apiKey, videodbService, userId);
 
   console.log('VideoDB SDK Configuration:');
   console.log('- AUTH_STATUS:', getAppConfig().accessToken ? 'Connected' : 'Needs Connection');
@@ -310,11 +595,20 @@ async function autoRegisterFromSetup() {
 // Helpers
 // ============================================================================
 
-function _getCurrentUserApiKey() {
+function _getCurrentUser() {
   const { accessToken } = getAppConfig();
   if (!accessToken) return null;
-  const user = findUserByToken(accessToken);
+  return findUserByToken(accessToken) || null;
+}
+
+function _getCurrentUserApiKey() {
+  const user = _getCurrentUser();
   return user ? user.api_key : null;
+}
+
+function _getCurrentUserId() {
+  const user = _getCurrentUser();
+  return user ? user.id : null;
 }
 
 // ============================================================================
@@ -348,9 +642,74 @@ app.whenReady().then(async () => {
     getCameraWindow: () => cameraWindow,
   });
 
-  ipcMain.handle('open-history-window', () => {
-    createHistoryWindow();
+  ipcMain.handle('open-history-window', (_event, focusSessionId) => {
+    createHistoryWindow(focusSessionId || null);
     return { success: true };
+  });
+
+  ipcMain.handle('show-permissions-modal', () => {
+    createModalWindow('permissions');
+    return { success: true };
+  });
+
+  ipcMain.handle('show-onboarding-modal', () => {
+    createModalWindow('onboarding');
+    return { success: true };
+  });
+
+  ipcMain.on('modal-complete', (_event, result) => {
+    if (modalWindow && !modalWindow.isDestroyed()) {
+      modalWindow.close();
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('recorder-event', {
+        event: 'modal:complete',
+        data: result,
+      });
+    }
+    // Auth state may have changed — refresh tray menu
+    updateTrayMenu();
+  });
+
+  // Display picker
+  ipcMain.handle('open-display-picker', async (_event, payload) => {
+    return openDisplayPicker(payload || {});
+  });
+
+  ipcMain.on('display-picker:select', (event, selection) => {
+    if (!displayPickerWindow || displayPickerWindow.isDestroyed()) return;
+    if (event.sender !== displayPickerWindow.webContents) return;
+    closeDisplayPicker({ cancelled: false, id: selection?.id, name: selection?.name });
+  });
+
+  ipcMain.on('display-picker:cancel', (event) => {
+    if (!displayPickerWindow || displayPickerWindow.isDestroyed()) return;
+    if (event.sender !== displayPickerWindow.webContents) return;
+    closeDisplayPicker({ cancelled: true });
+  });
+
+  // Click-through toggle — renderer calls this on mouseenter/mouseleave
+  ipcMain.on('set-ignore-mouse', (_event, ignore) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (ignore) {
+      mainWindow.setIgnoreMouseEvents(true, { forward: true });
+    } else {
+      mainWindow.setIgnoreMouseEvents(false);
+    }
+  });
+
+  ipcMain.on('hide-bar', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.hide();
+    }
+    updateTrayMenu();
+  });
+
+  ipcMain.on('show-bar', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    }
+    updateTrayMenu();
   });
 
   ipcMain.on('recording-state-changed', (_event, recording) => {
@@ -373,7 +732,6 @@ app.whenReady().then(async () => {
   globalShortcut.register('CommandOrControl+Shift+R', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('recorder-event', { event: 'shortcut:toggle-recording', data: {} });
-      mainWindow.show();
     }
   });
 });
@@ -387,6 +745,7 @@ app.on('window-all-closed', async () => {
 });
 
 app.on('before-quit', async (event) => {
+  closeDisplayPicker({ cancelled: true });
   if (!isShuttingDown) {
     event.preventDefault();
     await stopServices();
