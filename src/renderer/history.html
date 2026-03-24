@@ -41,7 +41,7 @@
             --spinner-border: rgba(255, 255, 255, 0.1);
             --spinner-top: rgba(255, 255, 255, 0.5);
             --active-accent-border: rgba(255, 255, 255, 0.1);
-            --active-accent-bg: rgba(255, 255, 255, 0.04);
+            --active-accent-bg: rgba(255, 255, 255, 0.08);
         }
 
         [data-theme="light"] {
@@ -543,9 +543,24 @@
             padding: 10px 12px;
             border-radius: 10px;
             cursor: pointer;
-            transition: background 0.15s;
+            transition: background 0.4s ease, transform 0.4s ease, opacity 0.4s ease, max-height 0.3s ease, padding 0.3s ease, margin 0.3s ease;
             border: 1px solid transparent;
             gap: 10px;
+        }
+
+        .video-item.deleting-slide {
+            background: rgba(229, 57, 53, 0.08);
+            transform: translateX(-100%);
+            opacity: 0;
+        }
+
+        .video-item.deleting-collapse {
+            max-height: 0 !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            margin: 0 !important;
+            border-color: transparent !important;
+            overflow: hidden;
         }
 
         .video-item:hover {
@@ -593,6 +608,42 @@
             font-size: 13px;
             color: var(--text-muted);
         }
+
+        /* ── Delete button (per row) ── */
+        .video-item-delete-btn {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border: none;
+            background: transparent;
+            border-radius: 6px;
+            color: var(--text-muted);
+            cursor: pointer;
+            flex-shrink: 0;
+            padding: 0;
+        }
+        .video-item-delete-btn .material-symbols-rounded { font-size: 18px; }
+        .video-item:hover .video-item-delete-btn { display: flex; }
+        .video-item-delete-btn:hover { background: rgba(229, 57, 53, 0.1); color: #e53935; }
+
+        /* ── Undo button in toast ── */
+        .undo-link {
+            color: var(--accent);
+            cursor: pointer;
+            font-weight: 600;
+            border: 1px solid var(--accent);
+            background: transparent;
+            font-size: 12px;
+            line-height: 1;
+            padding: 4px 10px;
+            margin-left: 6px;
+            border-radius: 4px;
+            white-space: nowrap;
+            align-self: center;
+        }
+        .undo-link:hover { background: var(--accent); color: #fff; }
 
         /* ── Status badges ── */
         .status-badge {
@@ -1077,8 +1128,7 @@
             display: flex;
             align-items: center;
             padding: 8px 10px;
-            gap: 4px;
-            height: 38px;
+            gap: 6px;
             background: var(--bg-tertiary);
             border: 1px solid var(--menu-border);
             box-shadow: var(--shadow-toast);
@@ -1096,6 +1146,8 @@
         .toast.visible {
             transform: translateX(-50%) translateY(0) scale(1);
             opacity: 1;
+            pointer-events: auto;
+            -webkit-app-region: no-drag;
         }
 
         /* ── Scrollbar ── */
@@ -1452,6 +1504,7 @@
     <div class="toast" id="toast">
         <span class="material-symbols-rounded" id="toastIcon" style="font-size: 20px; color: #fff;">check</span>
         <span id="toastMessage">Link copied to clipboard</span>
+        <button class="undo-link" id="undoBtn" style="display: none;">Undo</button>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>

@@ -4,12 +4,6 @@
 import { addLog } from './utils/logger.js';
 import { initBar, setSessionActive, setSessionLoading, resetSessionUI, getActiveSessionId, loadDevices, getSelectedChannels } from './ui/bar.js';
 
-// Permissions and onboarding are now separate modal windows
-// import { initOnboarding } from './ui/onboarding.js';
-// import { initPermissionsFlow } from './ui/permissions.js';
-// import { initHistoryLogic } from './src/ui/history.js'; // Moved to history.html
-
-// Global Event Handler
 // Prevent duplicate registration on reload
 if (!window.hasRegisteredRecorderEvents) {
   window.hasRegisteredRecorderEvents = true;
@@ -85,11 +79,10 @@ if (!window.hasRegisteredRecorderEvents) {
 }
 
 async function startSessionFlow() {
-  // Generate Session ID
-  const sessionId = 'session-' + Date.now();
+  if (!setSessionLoading()) return;
 
+  const sessionId = 'session-' + Date.now();
   addLog('Starting recording...', 'info');
-  setSessionLoading();
   window.recorderAPI.notifyRecordingState('gearing-up');
 
   try {

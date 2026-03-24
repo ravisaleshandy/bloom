@@ -124,6 +124,7 @@ async function init() {
         });
     }
     document.getElementById('downloadBtn')?.addEventListener('click', () => handleDownloadVideo());
+    document.getElementById('undoBtn')?.addEventListener('click', () => undoDelete());
     document.getElementById('downloadVideoBtn')?.addEventListener('click', () => {
         document.getElementById('downloadMenu')?.classList.remove('visible');
         handleDownloadVideo();
@@ -385,6 +386,17 @@ function createVideoListItem(recording) {
 
     div.appendChild(details);
 
+    // Delete button (visible on hover via CSS)
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'video-item-delete-btn';
+    deleteBtn.innerHTML = '<span class="material-symbols-rounded">delete</span>';
+    deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const current = loadedRecordings.find(r => r.id === recording.id) || recording;
+        initiateDelete(current);
+    });
+    div.appendChild(deleteBtn);
+
     // Only show badge for in-progress or error states
     if (recording.insights_status !== 'ready') {
         const badge = document.createElement('span');
@@ -450,6 +462,107 @@ function selectRecording(recording, autoplay = false) {
     updateActiveItemStyle();
     showPlayer(recording, autoplay);
     updatePlayerHeader(recording);
+}
+
+// --- Delete with undo ---
+
+let deleteTimer = null;
+let pendingDelete = null;
+
+function initiateDelete(recording) {
+    const el = document.querySelector(`.video-item[data-id="${recording.id}"]`);
+
+    // Flush any previous pending delete immediately
+    if (pendingDelete) {
+        clearTimeout(deleteTimer);
+        const prev = pendingDelete;
+        pendingDelete = null;
+        if (prev.el) prev.el.remove();
+        window.recorderAPI.deleteRecording(prev.recording.id)
+            .catch(err => console.error('Delete failed:', err));
+    }
+
+    // Two-phase animation: slide with red trail, then collapse height
+    if (el) {
+        el.classList.add('deleting-slide');
+        setTimeout(() => el.classList.add('deleting-collapse'), 400);
+    }
+
+    // Remove from in-memory array
+    const idx = loadedRecordings.findIndex(r => r.id === recording.id);
+    if (idx !== -1) loadedRecordings.splice(idx, 1);
+
+    // Clear detail panel if this was the active recording
+    if (activeRecordingId === recording.id) {
+        activeRecordingId = null;
+        activeRecording = null;
+        activeStreamUrl = null;
+        const emptyPlayer = document.getElementById('emptyPlayer');
+        const playerArea = document.getElementById('videoPlayerArea');
+        if (emptyPlayer) emptyPlayer.style.display = '';
+        if (playerArea) playerArea.style.display = 'none';
+    }
+
+    // Store for undo
+    pendingDelete = { recording, el, index: idx };
+    showUndoToast();
+
+    // Execute delete after 5s
+    deleteTimer = setTimeout(async () => {
+        hideUndoToast();
+        if (pendingDelete && pendingDelete.recording.id === recording.id) {
+            pendingDelete = null;
+            if (el) el.remove();
+            const result = await window.recorderAPI.deleteRecording(recording.id);
+            if (!result.success) showToast('Delete failed: ' + result.error, 'error');
+        }
+    }, 5000);
+}
+
+function undoDelete() {
+    if (!pendingDelete) return;
+    clearTimeout(deleteTimer);
+
+    const { recording, el, index } = pendingDelete;
+    pendingDelete = null;
+    hideUndoToast();
+    showToast('Action undone', 'success');
+
+    // Re-insert into array at original position
+    if (index >= 0 && index <= loadedRecordings.length) {
+        loadedRecordings.splice(index, 0, recording);
+    } else {
+        loadedRecordings.push(recording);
+    }
+
+    // Restore DOM element
+    if (el) {
+        el.classList.remove('deleting-slide', 'deleting-collapse');
+    }
+
+    // Re-select if it was active
+    if (activeRecordingId === null) {
+        selectRecording(recording);
+    }
+}
+
+function showUndoToast() {
+    const toast = document.getElementById('toast');
+    const msg = document.getElementById('toastMessage');
+    const icon = document.getElementById('toastIcon');
+    const undoBtn = document.getElementById('undoBtn');
+    if (!toast || !msg) return;
+    msg.textContent = 'Recording deleted';
+    if (icon) icon.textContent = 'delete';
+    if (undoBtn) undoBtn.style.display = '';
+    toast.classList.add('visible');
+}
+
+function hideUndoToast() {
+    const toast = document.getElementById('toast');
+    const undoBtn = document.getElementById('undoBtn');
+    if (toast) toast.classList.remove('visible');
+    if (undoBtn) undoBtn.style.display = 'none';
 }
 
 function updateActiveItemStyle() {
@@ -711,9 +824,11 @@ function showToast(message, type = 'success') {
     const toast = document.getElementById('toast');
     const msg = document.getElementById('toastMessage');
     const icon = document.getElementById('toastIcon');
+    const undoBtn = document.getElementById('undoBtn');
     if (!toast || !msg) return;
     msg.textContent = message;
     if (icon) icon.textContent = type === 'error' ? 'priority_high' : 'check';
+    if (undoBtn) undoBtn.style.display = 'none';
     toast.classList.add('visible');
     setTimeout(() => toast.classList.remove('visible'), 2500);
 }

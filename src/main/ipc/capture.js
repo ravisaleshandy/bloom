@@ -18,8 +18,17 @@ const {
  * @param {Function} getVideodbService - returns the VideoDBService singleton
  * @param {Function} getMainWindow - returns the main BrowserWindow
  */
+let isStartingRecording = false;
+
 function registerCaptureHandlers(getVideodbService, getMainWindow) {
   ipcMain.handle('recorder-start-recording', async (_event, clientSessionId, config) => {
+    // Guard: reject if a recording is already in progress or starting
+    if (isStartingRecording || getCaptureClient()) {
+      console.warn('Recording already in progress, ignoring duplicate start request');
+      return { success: false, error: 'Recording already in progress' };
+    }
+    isStartingRecording = true;
+
     try {
       console.log(`Starting recording (client reference: ${clientSessionId})`);
 
@@ -167,6 +176,8 @@ function registerCaptureHandlers(getVideodbService, getMainWindow) {
     } catch (error) {
       console.error('Error starting recording:', error.message, error.stack);
       return { success: false, error: error.message || 'Recording failed. Check screen recording permissions.' };
+    } finally {
+      isStartingRecording = false;
     }
   });
 

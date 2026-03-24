@@ -3,7 +3,7 @@
 const { ipcMain, dialog, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const { getRecordings: dbGetRecordings, getRecordingsByIds: dbGetRecordingsByIds, updateRecording, findRecordingBySessionId, getRecordingById } = require('../db/database');
+const { getRecordings: dbGetRecordings, getRecordingsByIds: dbGetRecordingsByIds, updateRecording, deleteRecording, findRecordingBySessionId, getRecordingById } = require('../db/database');
 const { getAppConfig } = require('../lib/config');
 const { findUserByToken } = require('../db/database');
 const { checkPendingRecordings } = require('../services/session.service');
@@ -157,6 +157,27 @@ function registerHistoryHandlers(getVideodbService) {
       return { success: true };
     } catch (error) {
       console.error('Error updating recording name:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('delete-recording', async (_event, id) => {
+    try {
+      const recording = getRecordingById(id);
+      if (!recording) return { success: false, error: 'Recording not found' };
+
+      deleteRecording(id);
+
+      if (recording.video_id) {
+        const apiKey = _getCurrentUserApiKey();
+        if (apiKey) {
+          const videodbService = getVideodbService();
+          await videodbService.deleteVideo(apiKey, recording.video_id);
+        }
+      }
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting recording:', error);
       return { success: false, error: error.message };
     }
   });

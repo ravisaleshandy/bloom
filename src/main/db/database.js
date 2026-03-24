@@ -191,6 +191,11 @@ function updateRecording(id, data) {
   saveToFile();
 }
 
+function deleteRecording(id) {
+  db.run('DELETE FROM recordings WHERE id = ?', [id]);
+  saveToFile();
+}
+
 function getRecordings(limit = 20, userId = null, offset = 0, search = null) {
   let sql = 'SELECT * FROM recordings';
   const params = [];
@@ -233,6 +238,7 @@ module.exports = {
   createRecording,
   findRecordingBySessionId,
   updateRecording,
+  deleteRecording,
   getRecordings,
   getRecordingById,
   getRecordingsByIds,

@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('recorderAPI', {
     downloadTranscript: (recordingId) => ipcRenderer.invoke('download-transcript', recordingId),
     openChatUrl: (videoId, collectionId) => ipcRenderer.invoke('open-chat-url', videoId, collectionId),
     updateRecordingName: (id, name) => ipcRenderer.invoke('update-recording-name', id, name),
+    deleteRecording: (id) => ipcRenderer.invoke('delete-recording', id),
     listDevices: () => ipcRenderer.invoke('list-devices'),
 
     // Electron specific permission checks logic (optional fallback)
