@@ -8,13 +8,15 @@ contextBridge.exposeInMainWorld('recorderAPI', {
     pauseTracks: (sessionId, tracks) => ipcRenderer.invoke('recorder-pause-tracks', sessionId, tracks),
     resumeTracks: (sessionId, tracks) => ipcRenderer.invoke('recorder-resume-tracks', sessionId, tracks),
     onRecorderEvent: (callback) => ipcRenderer.on('recorder-event', (event, data) => callback(data)),
-    getRecordings: () => ipcRenderer.invoke('get-recordings'),
+    getRecordings: (offset = 0, search = null) => ipcRenderer.invoke('get-recordings', offset, search),
+    getRecordingsByIds: (ids) => ipcRenderer.invoke('get-recordings-by-ids', ids),
     syncPendingRecordings: () => ipcRenderer.invoke('sync-pending-recordings'),
     getShareUrl: (videoId) => ipcRenderer.invoke('get-share-url', videoId),
     downloadVideo: (videoId) => ipcRenderer.invoke('download-video', videoId),
     downloadTranscript: (recordingId) => ipcRenderer.invoke('download-transcript', recordingId),
     openChatUrl: (videoId, collectionId) => ipcRenderer.invoke('open-chat-url', videoId, collectionId),
     updateRecordingName: (id, name) => ipcRenderer.invoke('update-recording-name', id, name),
+    deleteRecording: (id) => ipcRenderer.invoke('delete-recording', id),
     listDevices: () => ipcRenderer.invoke('list-devices'),
 
     // Electron specific permission checks logic (optional fallback)

@@ -30,6 +30,7 @@ const elements = {
 // State
 let activeSessionId = null;
 let lastSessionId = null;
+let isStarting = false; // Guard against duplicate start calls
 let timerInterval = null;
 let timerStartedAt = null;
 
@@ -124,6 +125,7 @@ function initClickThrough() {
 // --- Session State Management ---
 
 export function setSessionActive(sessionId) {
+    isStarting = false;
     activeSessionId = sessionId;
     hideRenameRow();
 
@@ -147,15 +149,19 @@ export function setSessionActive(sessionId) {
 }
 
 export function setSessionLoading() {
+    if (isStarting || activeSessionId) return false;
+    isStarting = true;
     if (elements.btnStart) {
         elements.btnStart.disabled = true;
         elements.btnStart.classList.add('loading');
         const label = elements.btnStart.querySelector('.btn-label');
         if (label) label.textContent = 'Gearing up\u2026';
     }
+    return true;
 }
 
 export function resetSessionUI() {
+    isStarting = false;
     if (activeSessionId) {
         lastSessionId = activeSessionId;
     }
@@ -470,7 +476,7 @@ function bindDisplaySelectorEvents() {
         if (activeSessionId) {
             const isActive = pill.classList.contains('active');
             const newState = !isActive;
-            pill.classList.toggle('active', newState);
+            updatePillVisual(pill, newState);
             try {
                 if (newState) {
                     addLog('Resuming display...');
@@ -481,7 +487,7 @@ function bindDisplaySelectorEvents() {
                 }
             } catch (error) {
                 addLog(`Failed to toggle display: ${error.message}`, 'error');
-                pill.classList.toggle('active', isActive);
+                updatePillVisual(pill, isActive);
             }
             return;
         }

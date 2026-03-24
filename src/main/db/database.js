@@ -191,22 +191,42 @@ function updateRecording(id, data) {
   saveToFile();
 }
 
-function getRecordings(limit = 20, userId = null) {
-  if (userId) {
-    return getAll('SELECT * FROM recordings WHERE user_id = ? ORDER BY created_at DESC LIMIT ?', [userId, limit]);
-  }
-  return getAll('SELECT * FROM recordings ORDER BY created_at DESC LIMIT ?', [limit]);
+function deleteRecording(id) {
+  db.run('DELETE FROM recordings WHERE id = ?', [id]);
+  saveToFile();
+}
+
+function getRecordings(limit = 20, userId = null, offset = 0, search = null) {
+  let sql = 'SELECT * FROM recordings';
+  const params = [];
+  const conditions = [];
+
+  if (userId) { conditions.push('user_id = ?'); params.push(userId); }
+  if (search) { conditions.push('name LIKE ?'); params.push(`%${search}%`); }
+  if (conditions.length > 0) sql += ' WHERE ' + conditions.join(' AND ');
+
+  sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  params.push(limit, offset);
+  return getAll(sql, params);
+}
+
+function getRecordingsByIds(ids) {
+  if (!ids || ids.length === 0) return [];
+  const placeholders = ids.map(() => '?').join(',');
+  return getAll(`SELECT * FROM recordings WHERE id IN (${placeholders})`, ids);
 }
 
 function getRecordingById(id) {
   return getOne('SELECT * FROM recordings WHERE id = ?', [id]);
 }
 
-function getOrphanedRecordings(userId = null) {
+function getUnresolvedRecordings(userId = null) {
+  const sql = `SELECT * FROM recordings WHERE session_id IS NOT NULL
+    AND (video_id IS NULL OR insights_status = 'indexing')`;
   if (userId) {
-    return getAll('SELECT * FROM recordings WHERE session_id IS NOT NULL AND video_id IS NULL AND user_id = ?', [userId]);
+    return getAll(sql + ' AND user_id = ?', [userId]);
   }
-  return getAll('SELECT * FROM recordings WHERE session_id IS NOT NULL AND video_id IS NULL');
+  return getAll(sql);
 }
 
 module.exports = {
@@ -218,7 +238,9 @@ module.exports = {
   createRecording,
   findRecordingBySessionId,
   updateRecording,
+  deleteRecording,
   getRecordings,
   getRecordingById,
-  getOrphanedRecordings,
+  getRecordingsByIds,
+  getUnresolvedRecordings,
 };

@@ -151,6 +151,7 @@ class VideoDBService {
     return {
       streamUrl: video.streamUrl || null,
       playerUrl: video.playerUrl || null,
+      duration: video.length ? Math.round(Number(video.length)) : null,
     };
   }
 
@@ -177,6 +178,16 @@ class VideoDBService {
     const coll = await this._getBloomCollection(apiKey);
     const video = await coll.getVideo(videoId);
     return await video.getTranscriptText();
+  }
+
+  /**
+   * Delete a video from the Bloom collection.
+   * @param {string} apiKey
+   * @param {string} videoId
+   */
+  async deleteVideo(apiKey, videoId) {
+    const coll = await this._getBloomCollection(apiKey);
+    await coll.deleteVideo(videoId);
   }
 
   /**
