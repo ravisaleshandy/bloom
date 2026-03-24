@@ -39,6 +39,9 @@ contextBridge.exposeInMainWorld('recorderAPI', {
     onDisplayPickerInit: (callback) => ipcRenderer.on('display-picker:init', (_event, data) => callback(data)),
     selectDisplayFromPicker: (selection) => ipcRenderer.send('display-picker:select', selection),
     cancelDisplayPicker: () => ipcRenderer.send('display-picker:cancel'),
+    toggleRecording: () => ipcRenderer.send('toggle-recording'),
+    getRecordingState: () => ipcRenderer.invoke('get-recording-state'),
+    onRecordingStateChanged: (callback) => ipcRenderer.on('recording-state-update', (_event, state) => callback(state)),
 });
 
 // Config API

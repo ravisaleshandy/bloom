@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.1.0] - 2026-03-23
+
+### Library
+- Dedicated "Bloom Recordings" collection — videos are now stored separately from the default collection
+- Chat button restyled with VideoDB orange spectrum and pulsating background
+- Recording button replaced with compact icon button (Material Symbols)
+- Custom instant tooltips replacing native title attributes
+- Consolidated to Material Symbols Rounded font across the library
+- CSS theme variable system for dark and light theme support
+- Header spacing refinements
+
 ## [2.0.0] - 2026-03-19
 
 ### Rebrand

@@ -27,14 +27,14 @@ function getDisplayName(recording) {
     if (recording.name) return recording.name;
     if (recording.created_at) {
         const d = new Date(recording.created_at);
-        return 'Recording at ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return 'Recording at ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
     }
     return 'Untitled Recording';
 }
 
 function formatDuration(recording) {
     if (recording.created_at) {
-        return new Date(recording.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return new Date(recording.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
     }
     return '';
 }
@@ -49,6 +49,9 @@ async function init() {
     });
 
     loadHistoryList();
+
+    // Recording button — init state and wire up
+    initRecordingButton();
 
     // Auto-sync pending recordings when library opens
     syncPendingRecordings();
@@ -590,6 +593,54 @@ async function handleDownloadTranscript() {
         showToast('Download failed', 'error');
         setDownloadState('default');
     }
+}
+
+// --- Recording Button ---
+
+function setRecordingBtnState(state) {
+    const btn = document.getElementById('recordBtn');
+    const icon = document.getElementById('recordBtnIcon');
+    if (!btn || !icon) return;
+
+    btn.classList.remove('recording', 'gearing-up');
+    btn.disabled = false;
+
+    switch (state) {
+        case 'idle':
+            icon.textContent = 'radio_button_checked';
+            btn.dataset.tooltip = 'Start a recording';
+            break;
+        case 'gearing-up':
+            btn.classList.add('gearing-up');
+            btn.disabled = true;
+            icon.textContent = 'progress_activity';
+            btn.dataset.tooltip = 'Starting recording...';
+            break;
+        case 'recording':
+            btn.classList.add('recording');
+            icon.textContent = 'stop_circle';
+            btn.dataset.tooltip = 'Stop Recording';
+            break;
+    }
+}
+
+async function initRecordingButton() {
+    const btn = document.getElementById('recordBtn');
+    if (!btn) return;
+
+    // Get initial state
+    const state = await window.recorderAPI.getRecordingState();
+    setRecordingBtnState(state || 'idle');
+
+    // Listen for state changes
+    window.recorderAPI.onRecordingStateChanged((state) => {
+        setRecordingBtnState(state);
+    });
+
+    // Click handler
+    btn.addEventListener('click', () => {
+        window.recorderAPI.toggleRecording();
+    });
 }
 
 // Start
