@@ -185,6 +185,20 @@ class VideoDBService {
    * @param {string} apiKey
    * @param {string} videoId
    */
+  /**
+   * Update a video's name in VideoDB.
+   * @param {string} apiKey
+   * @param {string} videoId
+   * @param {string} collectionId
+   * @param {string} name
+   */
+  async updateVideoName(apiKey, videoId, collectionId, name) {
+    const conn = this._getConnection(apiKey);
+    const coll = collectionId ? await conn.getCollection(collectionId) : await this._getBloomCollection(apiKey);
+    const video = await coll.getVideo(videoId);
+    await video.update({ name });
+  }
+
   async deleteVideo(apiKey, videoId) {
     const coll = await this._getBloomCollection(apiKey);
     await coll.deleteVideo(videoId);

@@ -154,6 +154,18 @@ function registerHistoryHandlers(getVideodbService) {
         recordingId = rec.id;
       }
       updateRecording(recordingId, { name });
+
+      // Sync name to VideoDB (fire-and-forget)
+      const recording = getRecordingById(recordingId);
+      if (recording?.video_id) {
+        const apiKey = _getCurrentUserApiKey();
+        if (apiKey) {
+          const videodbService = getVideodbService();
+          videodbService.updateVideoName(apiKey, recording.video_id, recording.collection_id, name)
+            .catch(err => console.error('[Name sync] Failed:', err.message));
+        }
+      }
+
       return { success: true };
     } catch (error) {
       console.error('Error updating recording name:', error);
