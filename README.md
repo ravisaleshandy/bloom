@@ -46,6 +46,12 @@ Recordings are no longer files, they are inputs for AI.
 
 ---
 
+## Demo
+
+https://github.com/user-attachments/assets/bf075217-b256-43b7-9369-b5d172bfc6b2
+
+---
+
 ## Installation
 
 Run this in your terminal to install Bloom:
