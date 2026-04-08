@@ -16,7 +16,7 @@ const { initDatabase, closeDatabase, findUserByApiKey, createUser, findUserByTok
 
 // --- Services ---
 const { VideoDBService } = require('./services/videodb.service');
-const { syncUnresolvedRecordings, shutdownSession } = require('./services/session.service');
+const { syncUnresolvedRecordings, shutdownSession, cleanupRecorderArtifacts, terminateStaleRecorderProcesses } = require('./services/session.service');
 
 // --- IPC ---
 const { registerAllHandlers } = require('./ipc');
@@ -623,14 +623,13 @@ app.whenReady().then(async () => {
   // 1. Init logging first (patches console.log/error/warn)
   initLogger();
 
-  // 1b. Clean up stale recorder lock files (binary writes these; they survive crashes)
-  for (const lockFile of [
-    path.join(app.getPath('userData'), 'bin', 'videodb-recorder.lock'),
-    path.join(app.getPath('temp'), 'videodb-recorder.lock'),
-    path.join(app.getPath('home'), '.videodb-recorder.lock'),
-  ]) {
-    try { if (fs.existsSync(lockFile)) { fs.unlinkSync(lockFile); console.log('Removed stale lock:', lockFile); } } catch (_) {}
+  // 1a. In local dev, kill any orphaned SDK recorder left behind by a suspended/crashed app
+  if (!app.isPackaged) {
+    terminateStaleRecorderProcesses();
   }
+
+  // 1b. Clean up stale recorder lock files (packaged and local-dev SDK paths)
+  cleanupRecorderArtifacts();
 
   // 2. Start services (DB, VideoDB, config, orphan sync)
   try {

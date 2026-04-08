@@ -1,5 +1,9 @@
 'use strict';
 
+const { app } = require('electron');
+const { execFileSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 const { findRecordingBySessionId, updateRecording, getUnresolvedRecordings } = require('../db/database');
 const { indexVideo } = require('./insights.service');
 
@@ -251,6 +255,86 @@ function setCaptureClient(client) {
   captureClient = client;
 }
 
+function getRecorderArtifactDirs() {
+  const dirs = new Set([
+    path.join(app.getPath('userData'), 'bin'),
+    app.getPath('temp'),
+    app.getPath('home'),
+  ]);
+
+  try {
+    const captureEntry = require.resolve('videodb/capture');
+    const sdkBinDir = path.resolve(path.dirname(captureEntry), '../../bin');
+    dirs.add(sdkBinDir);
+
+    if (process.platform === 'darwin') {
+      dirs.add(path.join(sdkBinDir, 'VideoDBCapture.app', 'Contents', 'MacOS'));
+    }
+  } catch (error) {
+    console.warn('[Capture] Could not resolve VideoDB SDK binary directory:', error.message);
+  }
+
+  return Array.from(dirs);
+}
+
+function cleanupRecorderArtifacts() {
+  const lockFiles = [];
+  for (const dir of getRecorderArtifactDirs()) {
+    lockFiles.push(path.join(dir, 'videodb-recorder.lock'));
+    lockFiles.push(path.join(dir, '.videodb-recorder.lock'));
+  }
+
+  for (const lockFile of lockFiles) {
+    try {
+      if (fs.existsSync(lockFile)) {
+        fs.unlinkSync(lockFile);
+        console.log('[Capture] Removed stale recorder lock:', lockFile);
+      }
+    } catch (error) {
+      console.warn('[Capture] Failed to remove recorder lock:', lockFile, error.message);
+    }
+  }
+}
+
+function terminateStaleRecorderProcesses() {
+  const candidatePaths = getRecorderArtifactDirs().map(dir => path.join(dir, 'capture'));
+
+  let output = '';
+  try {
+    output = execFileSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' });
+  } catch (error) {
+    console.warn('[Capture] Failed to inspect process list:', error.message);
+    return;
+  }
+
+  const currentPid = process.pid;
+  for (const line of output.split('\n')) {
+    const match = line.trim().match(/^(\d+)\s+(.+)$/);
+    if (!match) continue;
+
+    const pid = Number(match[1]);
+    const command = match[2];
+    if (!pid || pid === currentPid) continue;
+
+    const isRecorder = candidatePaths.some(candidate => command.includes(candidate));
+    if (!isRecorder) continue;
+
+    try {
+      process.kill(pid, 'SIGTERM');
+      console.log('[Capture] Terminated stale recorder process:', pid, command);
+    } catch (error) {
+      console.warn('[Capture] Failed to terminate recorder process:', pid, error.message);
+    }
+  }
+}
+
+async function recoverCaptureClient(reason = 'unknown error') {
+  console.warn(`[Capture] Recovering capture client after ${reason}`);
+  await shutdownSession();
+  terminateStaleRecorderProcesses();
+  cleanupRecorderArtifacts();
+}
+
 /**
  * Graceful shutdown of capture client.
  */
@@ -279,6 +363,9 @@ module.exports = {
   // CaptureClient accessors
   getCaptureClient,
   setCaptureClient,
+  cleanupRecorderArtifacts,
+  terminateStaleRecorderProcesses,
+  recoverCaptureClient,
   // Lifecycle
   shutdownSession,
 };

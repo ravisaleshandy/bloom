@@ -11,6 +11,7 @@ const {
   syncCaptureSession,
   getCaptureClient,
   setCaptureClient,
+  recoverCaptureClient,
 } = require('../services/session.service');
 
 /**
@@ -19,6 +20,51 @@ const {
  * @param {Function} getMainWindow - returns the main BrowserWindow
  */
 let isStartingRecording = false;
+
+function isRecoverableCaptureError(error) {
+  const message = String(error?.message || error || '').toLowerCase();
+  return (
+    message.includes('process exited') ||
+    message.includes('another recorder instance is already running') ||
+    message.includes('binary crashed too many times') ||
+    message.includes('sdk not initialized or binary process is not running') ||
+    message.includes('health check failed')
+  );
+}
+
+function createCaptureClient(sessionToken) {
+  if (app.isPackaged) applyVideoDBPatches();
+
+  const captureOptions = { sessionToken };
+  if (process.env.VIDEODB_API_URL) {
+    captureOptions.apiUrl = process.env.VIDEODB_API_URL;
+  }
+
+  console.log('Creating CaptureClient', captureOptions);
+  const client = new CaptureClient(captureOptions);
+  client.on('error', (err) => {
+    console.error('CaptureClient error:', err.message || err.type);
+  });
+  setCaptureClient(client);
+  return client;
+}
+
+async function withCaptureClient(sessionToken, operationName, operation) {
+  let client = getCaptureClient() || createCaptureClient(sessionToken);
+
+  try {
+    return await operation(client);
+  } catch (error) {
+    if (!isRecoverableCaptureError(error)) {
+      throw error;
+    }
+
+    console.warn(`[Capture] ${operationName} failed, retrying with a fresh client:`, error.message);
+    await recoverCaptureClient(`${operationName}: ${error.message}`);
+    client = createCaptureClient(sessionToken);
+    return operation(client);
+  }
+}
 
 function registerCaptureHandlers(getVideodbService, getMainWindow) {
   ipcMain.handle('recorder-start-recording', async (_event, clientSessionId, config) => {
@@ -76,27 +122,11 @@ function registerCaptureHandlers(getVideodbService, getMainWindow) {
         return { success: false, error: 'Failed to get session token. Please register first.' };
       }
 
-      // 4. Reuse existing CaptureClient (from list-devices) or create a new one
-      let captureClient = getCaptureClient();
-      if (!captureClient) {
-        if (app.isPackaged) applyVideoDBPatches();
-        const captureOptions = { sessionToken };
-        if (process.env.VIDEODB_API_URL) {
-          captureOptions.apiUrl = process.env.VIDEODB_API_URL;
-        }
-        console.log('Creating CaptureClient', captureOptions);
-        captureClient = new CaptureClient(captureOptions);
-        captureClient.on('error', (err) => {
-          console.error('CaptureClient error:', err.message || err.type);
-        });
-        setCaptureClient(captureClient);
-      }
-
-      // 5. List channels
+      // 4. List channels, recovering once if the native recorder got wedged
       console.log('Listing available channels...');
       let channels;
       try {
-        channels = await captureClient.listChannels();
+        channels = await withCaptureClient(sessionToken, 'listChannels', (captureClient) => captureClient.listChannels());
         for (const ch of channels.all()) {
           console.log(`  - ${ch.id} (${ch.type}): ${ch.name}`);
         }
@@ -161,10 +191,10 @@ function registerCaptureHandlers(getVideodbService, getMainWindow) {
 
       // 8. Start capture
       console.log('Starting capture session...');
-      await captureClient.startSession({
+      await withCaptureClient(sessionToken, 'startSession', (captureClient) => captureClient.startSession({
         sessionId: captureSessionId,
         channels: captureChannels,
-      });
+      }));
       console.log('Capture session started successfully');
 
       const mainWindow = getMainWindow();
@@ -269,19 +299,7 @@ function registerCaptureHandlers(getVideodbService, getMainWindow) {
       }
 
       // Reuse existing client if available; otherwise create and persist one
-      let client = getCaptureClient();
-      if (!client) {
-        if (app.isPackaged) applyVideoDBPatches();
-        const options = { sessionToken };
-        if (process.env.VIDEODB_API_URL) options.apiUrl = process.env.VIDEODB_API_URL;
-        client = new CaptureClient(options);
-        client.on('error', (err) => {
-          console.error('CaptureClient error:', err.message || err.type);
-        });
-        setCaptureClient(client);
-      }
-
-      const channels = await client.listChannels();
+      const channels = await withCaptureClient(sessionToken, 'list-devices', (client) => client.listChannels());
 
       const mics = channels.mics.map(ch => ({ id: ch.id, name: ch.name }));
       const systemAudio = channels.systemAudio.map(ch => ({ id: ch.id, name: ch.name }));
@@ -306,25 +324,14 @@ function registerCaptureHandlers(getVideodbService, getMainWindow) {
       const sdkPermission = permissionMap[type] || type;
 
       // Reuse existing client; create and persist if needed
-      let client = getCaptureClient();
-      if (!client) {
-        const videodbService = getVideodbService();
-        const apiKey = _getCurrentUserApiKey();
-        const sessionToken = apiKey ? await getSessionToken(videodbService, apiKey) : null;
-        if (!sessionToken) {
-          return { success: true, status: 'undetermined' };
-        }
-        if (app.isPackaged) applyVideoDBPatches();
-        const options = { sessionToken };
-        if (process.env.VIDEODB_API_URL) options.apiUrl = process.env.VIDEODB_API_URL;
-        client = new CaptureClient(options);
-        client.on('error', (err) => {
-          console.error('CaptureClient error:', err.message || err.type);
-        });
-        setCaptureClient(client);
+      const videodbService = getVideodbService();
+      const apiKey = _getCurrentUserApiKey();
+      const sessionToken = apiKey ? await getSessionToken(videodbService, apiKey) : null;
+      if (!sessionToken) {
+        return { success: true, status: 'undetermined' };
       }
 
-      const result = await client.requestPermission(sdkPermission);
+      const result = await withCaptureClient(sessionToken, 'requestPermission', (client) => client.requestPermission(sdkPermission));
       return { success: true, status: result };
     } catch (error) {
       console.error('Error requesting permission:', error);
